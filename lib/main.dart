@@ -16,7 +16,6 @@ import 'models/conversation.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialisation Firebase avec gestion d'erreur améliorée
   await _initializeFirebase();
 
   runApp(
@@ -42,47 +41,16 @@ Future<void> _initializeFirebase() async {
           apiKey: "AIzaSyCjb85UwE7nrp2ENO-1TRZoBK6q6rdxb2s",
           authDomain: "wodh-ai.firebaseapp.com",
           projectId: "wodh-ai",
-          storageBucket: "wodh-ai.firebasestorage.app",
+          storageBucket: "wodh-ai.appspot.com",
           messagingSenderId: "36323799698",
           appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
         ),
       );
-    } else if (Platform.isLinux) {
-      // Solution spécifique pour Linux
-      await _initializeFirebaseForLinux();
-    } else {
-      await Firebase.initializeApp();
-    }
-  } catch (e, stack) {
-    debugPrint('Firebase initialization error: $e');
-    debugPrint('Stack trace: $stack');
-    // Fallback pour Linux
-    if (Platform.isLinux) {
-      await _initializeFirebaseForLinux(fallback: true);
-    }
-  }
-}
-
-Future<void> _initializeFirebaseForLinux({bool fallback = false}) async {
-  try {
-    if (!fallback) {
-      await Firebase.initializeApp(
-        name: 'LinuxApp',
-        options: const FirebaseOptions(
-          apiKey: "AIzaSyCjb85UwE7nrp2ENO-1TRZoBK6q6rdxb2s",
-          authDomain: "wodh-ai.firebaseapp.com",
-          projectId: "wodh-ai",
-          storageBucket: "wodh-ai.firebasestorage.app",
-          messagingSenderId: "36323799698",
-          appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
-        ),
-      );
-    } else {
-      // Fallback ultra simple
+    } else if (!Platform.isLinux) {
       await Firebase.initializeApp();
     }
   } catch (e) {
-    debugPrint('Linux Firebase init error: $e');
+    debugPrint('Firebase initialization error: $e');
   }
 }
 
@@ -180,8 +148,6 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    final connectivityResults = Provider.of<List<ConnectivityResult>>(context);
-
     return Scaffold(
       body: Stack(
         children: [

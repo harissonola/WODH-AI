@@ -17,11 +17,15 @@ class AuthService with ChangeNotifier {
   );
   final fb_auth.FirebaseAuth _auth;
 
-  // Add this getter
   bool get isAuthenticated => _user != null;
 
   AuthService() : _auth = fb_auth.FirebaseAuth.instance {
-    _auth.authStateChanges().listen(_onAuthStateChanged);
+    if (!Platform.isLinux) {
+      _auth.authStateChanges().listen(_onAuthStateChanged);
+    } else {
+      // Pour Linux, on initialise directement avec un mock user
+      _user = AppUser(uid: 'mock_uid_linux', email: 'mockuser@linux.dev');
+    }
   }
 
   void _onAuthStateChanged(fb_auth.User? firebaseUser) {
@@ -33,48 +37,48 @@ class AuthService with ChangeNotifier {
     notifyListeners();
   }
 
-  // Connexion avec email/mot de passe
   Future<AppUser?> signInWithEmailAndPassword(
       String email, String password) async {
+    if (Platform.isLinux) {
+      return _mockUser();
+    }
+
     try {
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      _user = AppUser(
-        uid: userCredential.user!.uid,
-        email: userCredential.user!.email,
-      );
-      notifyListeners();
-      return _user;
+      return _createAppUser(userCredential.user);
     } on fb_auth.FirebaseAuthException catch (e) {
       debugPrint('Erreur de connexion: ${e.message}');
       rethrow;
     }
   }
 
-  // Inscription avec email/mot de passe
   Future<AppUser?> registerWithEmailAndPassword(
       String email, String password) async {
+    if (Platform.isLinux) {
+      return _mockUser();
+    }
+
     try {
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      _user = AppUser(
-        uid: userCredential.user!.uid,
-        email: userCredential.user!.email,
-      );
-      notifyListeners();
-      return _user;
+      return _createAppUser(userCredential.user);
     } on fb_auth.FirebaseAuthException catch (e) {
       debugPrint('Erreur d\'inscription: ${e.message}');
       rethrow;
     }
   }
 
-  // Réinitialisation de mot de passe
   Future<void> resetPassword(String email) async {
+    if (Platform.isLinux) {
+      debugPrint('Mock: Email de réinitialisation envoyé à $email');
+      return;
+    }
+
     try {
       await _auth.sendPasswordResetEmail(email: email);
     } on fb_auth.FirebaseAuthException catch (e) {
@@ -84,31 +88,23 @@ class AuthService with ChangeNotifier {
   }
 
   Future<AppUser?> signInWithGoogle() async {
+    if (Platform.isLinux) {
+      return _mockUser();
+    }
+
     try {
-      fb_auth.UserCredential userCredential;
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null;
 
-      if (Platform.isLinux) {
-        // Utilisez le helper Linux modifié
-        final result = await LinuxAuthHelper.signInWithGoogle();
-        if (result == null) {
-          throw Exception('Échec de la connexion Google sur Linux');
-        }
-        userCredential = result;
-      } else {
-        // Code existant pour les autres plateformes
-        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-        if (googleUser == null) return null;
+      final GoogleSignInAuthentication googleAuth =
+      await googleUser.authentication;
 
-        final GoogleSignInAuthentication googleAuth =
-        await googleUser.authentication;
-
-        userCredential = await _auth.signInWithCredential(
-          fb_auth.GoogleAuthProvider.credential(
-            accessToken: googleAuth.accessToken,
-            idToken: googleAuth.idToken,
-          ),
-        );
-      }
+      final userCredential = await _auth.signInWithCredential(
+        fb_auth.GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        ),
+      );
 
       return _createAppUser(userCredential.user);
     } catch (e) {
@@ -131,16 +127,28 @@ class AuthService with ChangeNotifier {
     return _user!;
   }
 
+  AppUser _mockUser() {
+    _user = AppUser(uid: 'mock_uid_linux', email: 'mockuser@linux.dev');
+    notifyListeners();
+    return _user!;
+  }
+
   Future<void> signOut() async {
     if (!Platform.isLinux) {
       await _googleSignIn.signOut();
+      await _auth.signOut();
     }
-    await _auth.signOut();
     _user = null;
     notifyListeners();
   }
 
   Future<void> checkAuthentication() async {
+    if (Platform.isLinux) {
+      _user = AppUser(uid: 'mock_uid_linux', email: 'mockuser@linux.dev');
+      notifyListeners();
+      return;
+    }
+
     try {
       final fb_auth.User? current = _auth.currentUser;
       _user = current != null
