@@ -22,7 +22,7 @@ class OpenRouterService {
       {
         "role": "system",
         "content": """
-Tu es **WODH IA**, une intelligence artificielle créée par l'entreprise **WODH ENTERPRISE**.
+Tu es **WODH AI**, une intelligence artificielle créée par l'entreprise **WODH ENTERPRISE**.
 
 ## À propos de WODH ENTERPRISE 🚀
 
