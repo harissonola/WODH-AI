@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'linux_auth_helper.dart';
 
 class AppUser {
   final String uid;
@@ -12,18 +11,18 @@ class AppUser {
 
 class AuthService with ChangeNotifier {
   AppUser? _user;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
-  );
-  final fb_auth.FirebaseAuth _auth;
+  GoogleSignIn? _googleSignIn;
+  fb_auth.FirebaseAuth? _auth;
 
   bool get isAuthenticated => _user != null;
 
-  AuthService() : _auth = fb_auth.FirebaseAuth.instance {
+  AuthService() {
     if (!Platform.isLinux) {
-      _auth.authStateChanges().listen(_onAuthStateChanged);
+      _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+      _auth = fb_auth.FirebaseAuth.instance;
+      _auth!.authStateChanges().listen(_onAuthStateChanged);
     } else {
-      // Pour Linux, on initialise directement avec un mock user
+      // Mode mock pour Linux
       _user = AppUser(uid: 'mock_uid_linux', email: 'mockuser@linux.dev');
     }
   }
@@ -37,14 +36,13 @@ class AuthService with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<AppUser?> signInWithEmailAndPassword(
-      String email, String password) async {
+  Future<AppUser?> signInWithEmailAndPassword(String email, String password) async {
     if (Platform.isLinux) {
       return _mockUser();
     }
 
     try {
-      final userCredential = await _auth.signInWithEmailAndPassword(
+      final userCredential = await _auth!.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -55,14 +53,13 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  Future<AppUser?> registerWithEmailAndPassword(
-      String email, String password) async {
+  Future<AppUser?> registerWithEmailAndPassword(String email, String password) async {
     if (Platform.isLinux) {
       return _mockUser();
     }
 
     try {
-      final userCredential = await _auth.createUserWithEmailAndPassword(
+      final userCredential = await _auth!.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -80,7 +77,7 @@ class AuthService with ChangeNotifier {
     }
 
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      await _auth!.sendPasswordResetEmail(email: email);
     } on fb_auth.FirebaseAuthException catch (e) {
       debugPrint('Erreur de réinitialisation: ${e.message}');
       rethrow;
@@ -93,13 +90,11 @@ class AuthService with ChangeNotifier {
     }
 
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      final googleUser = await _googleSignIn!.signIn();
       if (googleUser == null) return null;
 
-      final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
-
-      final userCredential = await _auth.signInWithCredential(
+      final googleAuth = await googleUser.authentication;
+      final userCredential = await _auth!.signInWithCredential(
         fb_auth.GoogleAuthProvider.credential(
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
@@ -114,15 +109,8 @@ class AuthService with ChangeNotifier {
   }
 
   AppUser _createAppUser(fb_auth.User? firebaseUser) {
-    if (firebaseUser == null) {
-      throw Exception('Firebase user is null');
-    }
-
-    _user = AppUser(
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-    );
-
+    if (firebaseUser == null) throw Exception('Firebase user is null');
+    _user = AppUser(uid: firebaseUser.uid, email: firebaseUser.email);
     notifyListeners();
     return _user!;
   }
@@ -135,8 +123,8 @@ class AuthService with ChangeNotifier {
 
   Future<void> signOut() async {
     if (!Platform.isLinux) {
-      await _googleSignIn.signOut();
-      await _auth.signOut();
+      await _googleSignIn!.signOut();
+      await _auth!.signOut();
     }
     _user = null;
     notifyListeners();
@@ -150,10 +138,8 @@ class AuthService with ChangeNotifier {
     }
 
     try {
-      final fb_auth.User? current = _auth.currentUser;
-      _user = current != null
-          ? AppUser(uid: current.uid, email: current.email)
-          : null;
+      final current = _auth!.currentUser;
+      _user = current != null ? AppUser(uid: current.uid, email: current.email) : null;
       notifyListeners();
     } catch (e) {
       debugPrint('Erreur vérification auth: $e');

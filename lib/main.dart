@@ -46,7 +46,7 @@ Future<void> _initializeFirebase() async {
           appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
         ),
       );
-    } else if (!Platform.isLinux) {
+    } else if (!Platform.isLinux) {  // Ne pas initialiser Firebase pour Linux
       await Firebase.initializeApp();
     }
   } catch (e) {
