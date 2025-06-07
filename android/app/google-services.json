@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "36323799698",
+    "project_id": "wodh-ai",
+    "storage_bucket": "wodh-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:36323799698:android:bca75712274ee8a3e8ec4b",
+        "android_client_info": {
+          "package_name": "com.example.wodh_ai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "36323799698-jfe32spt02s0q5fkfagaonbeool098bf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5za1zslGGTTxPz7uISMFZvHHVRwtHa3E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "36323799698-jfe32spt02s0q5fkfagaonbeool098bf.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "36323799698-es33cs80dprko2h9d91ap72qachrf2gi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.exemple.wodhai"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
