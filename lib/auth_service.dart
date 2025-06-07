@@ -83,18 +83,19 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  // Connexion Google (existant)
   Future<AppUser?> signInWithGoogle() async {
     try {
       fb_auth.UserCredential userCredential;
 
       if (Platform.isLinux) {
+        // Utilisez le helper Linux modifié
         final result = await LinuxAuthHelper.signInWithGoogle();
         if (result == null) {
           throw Exception('Échec de la connexion Google sur Linux');
         }
         userCredential = result;
       } else {
+        // Code existant pour les autres plateformes
         final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
         if (googleUser == null) return null;
 
@@ -109,16 +110,25 @@ class AuthService with ChangeNotifier {
         );
       }
 
-      _user = AppUser(
-        uid: userCredential.user!.uid,
-        email: userCredential.user!.email,
-      );
-      notifyListeners();
-      return _user;
+      return _createAppUser(userCredential.user);
     } catch (e) {
       debugPrint('Google Sign-In Error: $e');
       rethrow;
     }
+  }
+
+  AppUser _createAppUser(fb_auth.User? firebaseUser) {
+    if (firebaseUser == null) {
+      throw Exception('Firebase user is null');
+    }
+
+    _user = AppUser(
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+    );
+
+    notifyListeners();
+    return _user!;
   }
 
   Future<void> signOut() async {

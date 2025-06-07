@@ -39,34 +39,50 @@ Future<void> _initializeFirebase() async {
     if (kIsWeb) {
       await Firebase.initializeApp(
         options: const FirebaseOptions(
-          apiKey: "YOUR_WEB_API_KEY",
+          apiKey: "AIzaSyCjb85UwE7nrp2ENO-1TRZoBK6q6rdxb2s",
           authDomain: "wodh-ai.firebaseapp.com",
           projectId: "wodh-ai",
-          storageBucket: "wodh-ai.appspot.com",
+          storageBucket: "wodh-ai.firebasestorage.app",
           messagingSenderId: "36323799698",
-          appId: "1:36323799698:web:YOUR_WEB_APP_ID",
+          appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
         ),
       );
     } else if (Platform.isLinux) {
-      // Configuration spécifique pour Linux
-      await Firebase.initializeApp(
-        name: 'LinuxApp',
-        options: const FirebaseOptions(
-          apiKey: "AIzaSyB5za1zslGGTTxPz7uISMFZvHHVRwtHa3E",
-          appId: "1:36323799698:linux:YOUR_LINUX_APP_ID",
-          messagingSenderId: "36323799698",
-          projectId: "wodh-ai",
-          storageBucket: "wodh-ai.appspot.com",
-        ),
-      );
+      // Solution spécifique pour Linux
+      await _initializeFirebaseForLinux();
     } else {
-      // Initialisation par défaut pour mobile
       await Firebase.initializeApp();
     }
   } catch (e, stack) {
     debugPrint('Firebase initialization error: $e');
     debugPrint('Stack trace: $stack');
-    // Vous pourriez ajouter ici une logique de fallback ou d'erreur
+    // Fallback pour Linux
+    if (Platform.isLinux) {
+      await _initializeFirebaseForLinux(fallback: true);
+    }
+  }
+}
+
+Future<void> _initializeFirebaseForLinux({bool fallback = false}) async {
+  try {
+    if (!fallback) {
+      await Firebase.initializeApp(
+        name: 'LinuxApp',
+        options: const FirebaseOptions(
+          apiKey: "AIzaSyCjb85UwE7nrp2ENO-1TRZoBK6q6rdxb2s",
+          authDomain: "wodh-ai.firebaseapp.com",
+          projectId: "wodh-ai",
+          storageBucket: "wodh-ai.firebasestorage.app",
+          messagingSenderId: "36323799698",
+          appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
+        ),
+      );
+    } else {
+      // Fallback ultra simple
+      await Firebase.initializeApp();
+    }
+  } catch (e) {
+    debugPrint('Linux Firebase init error: $e');
   }
 }
 
