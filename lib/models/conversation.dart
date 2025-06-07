@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 
 class Message {
   final String id;
-  final String content;
+  String content; // Modifiable pour permettre l'édition
   final DateTime timestamp;
   final bool isUser;
 
@@ -52,6 +52,46 @@ class ConversationProvider with ChangeNotifier {
   List<Conversation> get conversations => _conversations;
   Conversation? get currentConversation => _currentConversation;
 
+  // Méthode pour éditer un message existant
+  void editMessage(String conversationId, int messageIndex, String newContent) {
+    final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
+    if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
+      conversation.messages[messageIndex].content = newContent;
+      notifyListeners();
+    }
+  }
+
+  // NOUVELLE MÉTHODE : Supprimer le dernier message
+  void removeLastMessage() {
+    if (_currentConversation != null && _currentConversation!.messages.isNotEmpty) {
+      _currentConversation!.messages.removeLast();
+      notifyListeners();
+    }
+  }
+
+  // Méthode pour supprimer un message spécifique par index
+  void removeMessageAt(int index) {
+    if (_currentConversation != null &&
+        index >= 0 &&
+        index < _currentConversation!.messages.length) {
+      _currentConversation!.messages.removeAt(index);
+      notifyListeners();
+    }
+  }
+
+  // Méthode pour supprimer tous les messages après un index donné
+  void removeMessagesAfter(int index) {
+    if (_currentConversation != null &&
+        index >= 0 &&
+        index < _currentConversation!.messages.length) {
+      _currentConversation!.messages.removeRange(
+          index + 1,
+          _currentConversation!.messages.length
+      );
+      notifyListeners();
+    }
+  }
+
   void createNewConversation([String title = 'Nouvelle conversation']) {
     final newConversation = Conversation(
       title: title,
@@ -86,5 +126,37 @@ class ConversationProvider with ChangeNotifier {
     final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
     conversation.updateTitle(newTitle);
     notifyListeners();
+  }
+
+  // Méthode utilitaire pour vider une conversation
+  void clearCurrentConversation() {
+    if (_currentConversation != null) {
+      _currentConversation!.messages.clear();
+      notifyListeners();
+    }
+  }
+
+  // Méthode pour obtenir le dernier message utilisateur
+  Message? getLastUserMessage() {
+    if (_currentConversation == null) return null;
+
+    try {
+      return _currentConversation!.messages
+          .lastWhere((message) => message.isUser);
+    } catch (e) {
+      return null; // Aucun message utilisateur trouvé
+    }
+  }
+
+  // Méthode pour obtenir le dernier message assistant
+  Message? getLastAssistantMessage() {
+    if (_currentConversation == null) return null;
+
+    try {
+      return _currentConversation!.messages
+          .lastWhere((message) => !message.isUser);
+    } catch (e) {
+      return null; // Aucun message assistant trouvé
+    }
   }
 }
