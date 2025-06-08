@@ -9,7 +9,7 @@ import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 import '../models/conversation.dart';
 import '../services/openrouter_service.dart';
-
+import 'package:markdown/markdown.dart' as md;
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -167,7 +167,6 @@ class _ChatScreenState extends State<ChatScreen> {
         true
     );
 
-    // Faites défiler vers le bas immédiatement après avoir ajouté le message utilisateur
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom();
     });
@@ -193,7 +192,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       provider.addMessageToCurrent(response, false);
 
-      // Faites défiler vers le bas après avoir ajouté la réponse de l'assistant
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
       });
@@ -341,9 +339,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         itemBuilder: (context, index) {
                           final message = conversation!.messages[index];
                           return MessageBubble(
+                            messageId: '',
                             message: message.content,
                             isUser: message.isUser,
                             time: message.formattedTime,
+                            scrollToBottom: _scrollToBottom,
+                            setSendingState: (isSending) => setState(() => _isSending = isSending),
                           );
                         },
                       );
@@ -575,25 +576,148 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 class MessageBubble extends StatefulWidget {
+  final String messageId;
   final String message;
   final bool isUser;
   final String time;
+  final VoidCallback scrollToBottom;
+  final Function(bool) setSendingState;
 
   const MessageBubble({
     super.key,
+    required this.messageId,
     required this.message,
     required this.isUser,
     required this.time,
+    required this.scrollToBottom,
+    required this.setSendingState,
   });
 
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
 }
 
-// Supprimez toute la classe TypewriterText (lignes 17-55)
-
-// Modifiez la classe _MessageBubbleState comme suit :
 class _MessageBubbleState extends State<MessageBubble> {
+  bool _isHovered = false;
+  bool _isEditing = false;
+  late TextEditingController _editController;
+
+  @override
+  void initState() {
+    super.initState();
+    _editController = TextEditingController(text: widget.message);
+  }
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    super.dispose();
+  }
+
+  bool _containsCodeBlock(String message) {
+    final codeBlockRegex = RegExp(r'```[a-zA-Z]*\n[\s\S]*?\n```');
+    return codeBlockRegex.hasMatch(message);
+  }
+
+  void _saveEdit() {
+    if (_editController.text.trim().isNotEmpty) {
+      final provider = Provider.of<ConversationProvider>(context, listen: false);
+      if (provider.currentConversation != null) {
+        final messages = provider.currentConversation!.messages;
+        final messageIndex = messages.indexWhere((m) => m.content == widget.message);
+
+        if (messageIndex != -1) {
+          final newContent = _editController.text;
+          provider.editMessage(
+            provider.currentConversation!.id,
+            messageIndex,
+            newContent,
+          );
+          setState(() => _isEditing = false);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Impossible de trouver le message à modifier'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Widget _buildActionButton(IconData icon, String label, Color color) {
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: () {
+          switch (label) {
+            case 'J\'aime':
+              _handleLikeAction();
+              break;
+            case 'Je n\'aime pas':
+              _handleDislikeAction();
+              break;
+            case 'Copier':
+              _handleCopyAction();
+              break;
+          }
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleLikeAction() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Merci pour votre feedback positif!'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _handleDislikeAction() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Nous améliorerons notre réponse.'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _handleCopyAction() {
+    Clipboard.setData(ClipboardData(text: widget.message));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Message copié!'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -613,136 +737,181 @@ class _MessageBubbleState extends State<MessageBubble> {
               ),
             ),
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: widget.isUser
-                      ? [
-                    Colors.deepPurple.shade600,
-                    Colors.purpleAccent.shade400,
-                  ]
-                      : [
-                    Colors.grey.shade100,
-                    Colors.grey.shade50,
+            child: MouseRegion(
+              onEnter: (_) => setState(() => _isHovered = true),
+              onExit: (_) => setState(() => _isHovered = false),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: widget.isUser
+                        ? [
+                      Colors.deepPurple.shade600,
+                      Colors.purpleAccent.shade400,
+                    ]
+                        : [
+                      Colors.grey.shade100,
+                      Colors.grey.shade50,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: widget.isUser
+                        ? const Radius.circular(18)
+                        : const Radius.circular(4),
+                    bottomRight: widget.isUser
+                        ? const Radius.circular(4)
+                        : const Radius.circular(18),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: widget.isUser
-                      ? const Radius.circular(18)
-                      : const Radius.circular(4),
-                  bottomRight: widget.isUser
-                      ? const Radius.circular(4)
-                      : const Radius.circular(18),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  MarkdownBody(
-                    data: widget.message,
-                    selectable: true,
-                    styleSheet: MarkdownStyleSheet(
-                      p: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontSize: 15,
-                        height: 1.4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isEditing && widget.isUser) ...[
+                      Column(
+                        children: [
+                          TextField(
+                            controller: _editController,
+                            maxLines: null,
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.all(8),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => setState(() => _isEditing = false),
+                                child: const Text('Annuler'),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: _saveEdit,
+                                child: const Text('Enregistrer'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    ] else ...[
+                      Stack(
+                        children: [
+                          MarkdownBody(
+                            data: widget.message,
+                            selectable: true,
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(
+                                color: widget.isUser ? Colors.white : Colors.black87,
+                                fontSize: 15,
+                                height: 1.4,
+                              ),
+                              code: TextStyle(
+                                color: widget.isUser ? Colors.white : Colors.deepPurple,
+                                backgroundColor: widget.isUser
+                                    ? Colors.deepPurple.withOpacity(0.3)
+                                    : Colors.deepPurple.withOpacity(0.1),
+                                fontFamily: 'monospace',
+                              ),
+                              codeblockPadding: const EdgeInsets.all(12),
+                              codeblockDecoration: BoxDecoration(
+                                color: widget.isUser
+                                    ? Colors.deepPurple.withOpacity(0.3)
+                                    : Colors.deepPurple.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.deepPurple.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            builders: {
+                              'code': CodeElementBuilder(),
+                            },
+                          ),
+                          if (_isHovered) ...[
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Row(
+                                children: [
+                                  if (widget.isUser)
+                                    IconButton(
+                                      icon: Icon(Icons.edit,
+                                          size: 18,
+                                          color: widget.isUser
+                                              ? Colors.white70
+                                              : Colors.deepPurple),
+                                      onPressed: () =>
+                                          setState(() => _isEditing = true),
+                                    ),
+                                  if (_containsCodeBlock(widget.message))
+                                    IconButton(
+                                      icon: Icon(Icons.content_copy,
+                                          size: 18,
+                                          color: widget.isUser
+                                              ? Colors.white70
+                                              : Colors.deepPurple),
+                                      onPressed: () {
+                                        final codeBlocks = RegExp(
+                                            r'```[a-zA-Z]*\n([\s\S]*?)\n```')
+                                            .allMatches(widget.message)
+                                            .map((match) => match.group(1))
+                                            .join('\n\n');
+                                        Clipboard.setData(
+                                            ClipboardData(text: codeBlocks));
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Code copié !'),
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      code: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.deepPurple,
-                        backgroundColor: widget.isUser
-                            ? Colors.deepPurple.withOpacity(0.3)
-                            : Colors.deepPurple.withOpacity(0.1),
-                        fontFamily: 'monospace',
-                      ),
-                      codeblockDecoration: BoxDecoration(
+                      if (!widget.isUser) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildActionButton(Icons.thumb_up, 'J\'aime', Colors.green),
+                            _buildActionButton(Icons.thumb_down, 'Je n\'aime pas', Colors.red),
+                            _buildActionButton(Icons.copy, 'Copier', Colors.blue),
+                          ],
+                        ),
+                      ],
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.time,
+                      style: TextStyle(
                         color: widget.isUser
-                            ? Colors.deepPurple.withOpacity(0.3)
-                            : Colors.deepPurple.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      h1: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                      h2: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                      h3: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                      h4: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                      h5: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                      h6: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                      em: TextStyle(
-                        fontStyle: FontStyle.italic,
-                      ),
-                      strong: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      blockquote: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                        fontStyle: FontStyle.italic,
-                      ),
-                      listBullet: TextStyle(
-                        color: widget.isUser ? Colors.white : Colors.black87,
-                      ),
-                      tableBorder: TableBorder.all(
-                        color: widget.isUser ? Colors.white54 : Colors.black54,
-                        width: 1,
-                      ),
-                      tableCellsDecoration: BoxDecoration(
-                        color: widget.isUser
-                            ? Colors.deepPurple.withOpacity(0.2)
-                            : Colors.grey.withOpacity(0.1),
+                            ? Colors.white.withOpacity(0.8)
+                            : Colors.black.withOpacity(0.5),
+                        fontSize: 10,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.time,
-                    style: TextStyle(
-                      color: widget.isUser
-                          ? Colors.white.withOpacity(0.8)
-                          : Colors.black.withOpacity(0.5),
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -757,6 +926,55 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class CodeElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final language = element.attributes['class']?.replaceAll('language-', '');
+    final code = element.textContent;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.deepPurple.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.deepPurple.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (language != null && language.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                language,
+                style: TextStyle(
+                  color: Colors.deepPurple,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SelectableText(
+              code,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                color: Colors.deepPurple.shade800,
+              ),
+            ),
+          ),
         ],
       ),
     );

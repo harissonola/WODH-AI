@@ -1,29 +1,30 @@
+// Déclaration des plugins pour l'application
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // Le plugin Flutter doit être appliqué après les plugins Android et Kotlin
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
 }
 
+// Dépendances du projet
 dependencies {
-    // Import the Firebase BoM
+    // Importation de la BOM Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.14.0"))
 
-
-    // TODO: Add the dependencies for Firebase products you want to use
-    // When using the BoM, don't specify versions in Firebase dependencies
+    // TODO: Ajouter les dépendances Firebase nécessaires
+    // Avec la BOM, ne pas spécifier de versions pour les dépendances Firebase
     implementation("com.google.firebase:firebase-analytics")
 
-
-    // Add the dependencies for any other desired Firebase products
+    // Ajouter les dépendances pour d'autres produits Firebase si besoin
     // https://firebase.google.com/docs/android/setup#available-libraries
 }
 
+// Configuration Android
 android {
     namespace = "com.example.wodh_ai"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"  // Correction NDK
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -35,11 +36,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.wodh_ai"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 23  // Augmenté à 23 pour Firebase Auth
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -47,13 +45,12 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
 
+// Configuration Flutter
 flutter {
     source = "../.."
 }
