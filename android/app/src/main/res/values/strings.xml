@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">wodh_ai</string>
+    
+    <!-- Configuration Facebook (remplacez les valeurs par les vôtres) -->
+    <string name="facebook_app_id">1394095741836419</string>
+    <string name="fb_login_protocol_scheme">fb1394095741836419</string>
+    
+    <!-- Autres chaînes si nécessaire -->
+</resources>

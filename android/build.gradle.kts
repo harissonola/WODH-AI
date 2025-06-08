@@ -1,34 +1,24 @@
-// Configuration des plugins pour tous les sous-projets
-plugins {
-    id("com.android.application") apply false
-    id("org.jetbrains.kotlin.android") apply false
-    id("com.google.gms.google-services") version "4.4.2" apply false
-}
-
-// Configuration des dépôts pour tous les projets
-allprojects {
+buildscript {
     repositories {
         google()
         mavenCentral()
     }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.2.2")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")
+        classpath("com.google.gms:google-services:4.4.1")
+    }
 }
 
-// Configuration du répertoire de build personnalisé
-val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
-rootProject.layout.buildDirectory.value(newBuildDir)
-
-// Application du répertoire de build personnalisé aux sous-projets
-subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
 }
 
-// Dépendance entre sous-projets
-subprojects {
-    project.evaluationDependsOn(":app")
-}
-
-// Tâche de nettoyage
 tasks.register<Delete>("clean") {
-    delete(rootProject.layout.buildDirectory)
+    delete(rootProject.buildDir)
 }

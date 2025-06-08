@@ -135,15 +135,23 @@ class AuthService with ChangeNotifier {
   // Microsoft
   Future<AppUser?> signInWithMicrosoft() async {
     if (Platform.isLinux) return _mockUser();
-
-    try {
+    if (kIsWeb) {
+      // Approche web
       final userCredential = await _auth!.signInWithPopup(
         fb_auth.OAuthProvider('microsoft.com'),
       );
       return _createAppUser(userCredential.user);
-    } catch (e) {
-      debugPrint('Microsoft Sign-In Error: $e');
-      rethrow;
+    } else {
+      // Approche mobile
+      try {
+        final userCredential = await _auth!.signInWithProvider(
+          fb_auth.OAuthProvider('microsoft.com'),
+        );
+        return _createAppUser(userCredential.user);
+      } catch (e) {
+        debugPrint('Microsoft Sign-In Error: $e');
+        rethrow;
+      }
     }
   }
 
