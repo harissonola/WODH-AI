@@ -2,11 +2,14 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
 class AppUser {
   final String uid;
   final String? email;
-  AppUser({required this.uid, this.email});
+  final String? phoneNumber;
+
+  AppUser({required this.uid, this.email, this.phoneNumber});
 }
 
 class AuthService with ChangeNotifier {
@@ -31,15 +34,18 @@ class AuthService with ChangeNotifier {
     if (firebaseUser == null) {
       _user = null;
     } else {
-      _user = AppUser(uid: firebaseUser.uid, email: firebaseUser.email);
+      _user = AppUser(
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        phoneNumber: firebaseUser.phoneNumber,
+      );
     }
     notifyListeners();
   }
 
+  // Email/Password
   Future<AppUser?> signInWithEmailAndPassword(String email, String password) async {
-    if (Platform.isLinux) {
-      return _mockUser();
-    }
+    if (Platform.isLinux) return _mockUser();
 
     try {
       final userCredential = await _auth!.signInWithEmailAndPassword(
@@ -54,9 +60,7 @@ class AuthService with ChangeNotifier {
   }
 
   Future<AppUser?> registerWithEmailAndPassword(String email, String password) async {
-    if (Platform.isLinux) {
-      return _mockUser();
-    }
+    if (Platform.isLinux) return _mockUser();
 
     try {
       final userCredential = await _auth!.createUserWithEmailAndPassword(
@@ -84,10 +88,9 @@ class AuthService with ChangeNotifier {
     }
   }
 
+  // Google
   Future<AppUser?> signInWithGoogle() async {
-    if (Platform.isLinux) {
-      return _mockUser();
-    }
+    if (Platform.isLinux) return _mockUser();
 
     try {
       final googleUser = await _googleSignIn!.signIn();
@@ -108,9 +111,88 @@ class AuthService with ChangeNotifier {
     }
   }
 
+  Future<AppUser?> signInWithFacebook() async {
+    if (Platform.isLinux) return _mockUser();
+
+    try {
+      final LoginResult loginResult = await FacebookAuth.instance.login();
+      if (loginResult.status == LoginStatus.success) {
+        // Pour la version 7.1.2, nous utilisons directement le token de cette manière
+        final fb_auth.OAuthCredential credential =
+        fb_auth.FacebookAuthProvider.credential(
+            loginResult.accessToken!.tokenString);
+
+        final userCredential = await _auth!.signInWithCredential(credential);
+        return _createAppUser(userCredential.user);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Facebook Sign-In Error: $e');
+      rethrow;
+    }
+  }
+
+  // Microsoft
+  Future<AppUser?> signInWithMicrosoft() async {
+    if (Platform.isLinux) return _mockUser();
+
+    try {
+      final userCredential = await _auth!.signInWithPopup(
+        fb_auth.OAuthProvider('microsoft.com'),
+      );
+      return _createAppUser(userCredential.user);
+    } catch (e) {
+      debugPrint('Microsoft Sign-In Error: $e');
+      rethrow;
+    }
+  }
+
+  // Phone
+  Future<void> verifyPhoneNumber({
+    required String phoneNumber,
+    required Function(String) onCodeSent,
+    required Function(fb_auth.FirebaseAuthException) onVerificationFailed,
+    required Function(fb_auth.PhoneAuthCredential) onVerificationCompleted,
+    required Function(String) onCodeAutoRetrievalTimeout,
+  }) async {
+    if (Platform.isLinux) return;
+
+    await _auth!.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: onVerificationCompleted,
+      verificationFailed: onVerificationFailed,
+      codeSent: (verificationId, forceResendingToken) => onCodeSent(verificationId),
+      codeAutoRetrievalTimeout: onCodeAutoRetrievalTimeout,
+    );
+  }
+
+  Future<AppUser?> signInWithPhoneNumber({
+    required String verificationId,
+    required String smsCode,
+  }) async {
+    if (Platform.isLinux) return _mockUser();
+
+    try {
+      final credential = fb_auth.PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
+      final userCredential = await _auth!.signInWithCredential(credential);
+      return _createAppUser(userCredential.user);
+    } catch (e) {
+      debugPrint('Phone Sign-In Error: $e');
+      rethrow;
+    }
+  }
+
+  // Utilitaires
   AppUser _createAppUser(fb_auth.User? firebaseUser) {
     if (firebaseUser == null) throw Exception('Firebase user is null');
-    _user = AppUser(uid: firebaseUser.uid, email: firebaseUser.email);
+    _user = AppUser(
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      phoneNumber: firebaseUser.phoneNumber,
+    );
     notifyListeners();
     return _user!;
   }
@@ -123,7 +205,8 @@ class AuthService with ChangeNotifier {
 
   Future<void> signOut() async {
     if (!Platform.isLinux) {
-      await _googleSignIn!.signOut();
+      await _googleSignIn?.signOut();
+      await FacebookAuth.instance.logOut();
       await _auth!.signOut();
     }
     _user = null;
@@ -139,7 +222,15 @@ class AuthService with ChangeNotifier {
 
     try {
       final current = _auth!.currentUser;
-      _user = current != null ? AppUser(uid: current.uid, email: current.email) : null;
+      if (current != null) {
+        _user = AppUser(
+          uid: current.uid,
+          email: current.email,
+          phoneNumber: current.phoneNumber,
+        );
+      } else {
+        _user = null;
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('Erreur vérification auth: $e');

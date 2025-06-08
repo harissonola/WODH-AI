@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../auth_service.dart';  // Updated import path
+import '../auth_service.dart';
 import 'email_auth_screen.dart';
+import 'phone_auth_screen.dart';
 
 class AuthScreen extends StatelessWidget {
   const AuthScreen({super.key});
@@ -29,8 +30,6 @@ class AuthScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Your existing UI code...
-
                 const SizedBox(height: 40),
 
                 // Google Button
@@ -45,7 +44,9 @@ class AuthScreen extends StatelessWidget {
                     try {
                       final auth = Provider.of<AuthService>(context, listen: false);
                       final user = await auth.signInWithGoogle();
-                      if (user == null) {
+                      if (user != null) {
+                        Navigator.pushReplacementNamed(context, '/home');
+                      } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Échec de la connexion avec Google'),
@@ -61,6 +62,93 @@ class AuthScreen extends StatelessWidget {
                         ),
                       );
                     }
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Facebook Button
+                _buildAuthButton(
+                  context,
+                  icon: Image.asset(
+                    'assets/facebook_logo.png',
+                    height: 24,
+                  ),
+                  text: 'Continuer avec Facebook',
+                  onPressed: () async {
+                    try {
+                      final auth = Provider.of<AuthService>(context, listen: false);
+                      final user = await auth.signInWithFacebook();
+                      if (user != null) {
+                        Navigator.pushReplacementNamed(context, '/home');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Échec de la connexion avec Facebook'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Erreur: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Microsoft Button
+                _buildAuthButton(
+                  context,
+                  icon: Image.asset(
+                    'assets/microsoft_logo.png',
+                    height: 24,
+                  ),
+                  text: 'Continuer avec Microsoft',
+                  onPressed: () async {
+                    try {
+                      final auth = Provider.of<AuthService>(context, listen: false);
+                      final user = await auth.signInWithMicrosoft();
+                      if (user != null) {
+                        Navigator.pushReplacementNamed(context, '/home');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Échec de la connexion avec Microsoft'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Erreur: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Phone Button
+                _buildAuthButton(
+                  context,
+                  icon: const Icon(Icons.phone, color: Colors.black87),
+                  text: 'Continuer avec Téléphone',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PhoneAuthScreen(),
+                      ),
+                    );
                   },
                 ),
 

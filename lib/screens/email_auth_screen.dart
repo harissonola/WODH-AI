@@ -46,6 +46,11 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
           _passwordController.text.trim(),
         );
       }
+
+      // Redirection vers l'écran d'accueil après succès
+      if (auth.isAuthenticated) {
+        Navigator.pushReplacementNamed(context, '/home');
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
