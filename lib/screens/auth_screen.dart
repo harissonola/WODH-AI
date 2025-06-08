@@ -67,41 +67,6 @@ class AuthScreen extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                // Facebook Button
-                _buildAuthButton(
-                  context,
-                  icon: Image.asset(
-                    'assets/facebook_logo.png',
-                    height: 24,
-                  ),
-                  text: 'Continuer avec Facebook',
-                  onPressed: () async {
-                    try {
-                      final auth = Provider.of<AuthService>(context, listen: false);
-                      final user = await auth.signInWithFacebook();
-                      if (user != null) {
-                        Navigator.pushReplacementNamed(context, '/home');
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Échec de la connexion avec Facebook'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Erreur: ${e.toString()}'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                ),
-
-                const SizedBox(height: 16),
-
                 // Microsoft Button
                 _buildAuthButton(
                   context,

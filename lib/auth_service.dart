@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
 class AppUser {
   final String uid;
@@ -111,47 +110,18 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  Future<AppUser?> signInWithFacebook() async {
-    if (Platform.isLinux) return _mockUser();
-
-    try {
-      final LoginResult loginResult = await FacebookAuth.instance.login();
-      if (loginResult.status == LoginStatus.success) {
-        // Pour la version 7.1.2, nous utilisons directement le token de cette manière
-        final fb_auth.OAuthCredential credential =
-        fb_auth.FacebookAuthProvider.credential(
-            loginResult.accessToken!.tokenString);
-
-        final userCredential = await _auth!.signInWithCredential(credential);
-        return _createAppUser(userCredential.user);
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Facebook Sign-In Error: $e');
-      rethrow;
-    }
-  }
-
   // Microsoft
   Future<AppUser?> signInWithMicrosoft() async {
     if (Platform.isLinux) return _mockUser();
-    if (kIsWeb) {
-      // Approche web
-      final userCredential = await _auth!.signInWithPopup(
+
+    try {
+      final userCredential = await _auth!.signInWithProvider(
         fb_auth.OAuthProvider('microsoft.com'),
       );
       return _createAppUser(userCredential.user);
-    } else {
-      // Approche mobile
-      try {
-        final userCredential = await _auth!.signInWithProvider(
-          fb_auth.OAuthProvider('microsoft.com'),
-        );
-        return _createAppUser(userCredential.user);
-      } catch (e) {
-        debugPrint('Microsoft Sign-In Error: $e');
-        rethrow;
-      }
+    } catch (e) {
+      debugPrint('Microsoft Sign-In Error: $e');
+      rethrow;
     }
   }
 
@@ -214,7 +184,6 @@ class AuthService with ChangeNotifier {
   Future<void> signOut() async {
     if (!Platform.isLinux) {
       await _googleSignIn?.signOut();
-      await FacebookAuth.instance.logOut();
       await _auth!.signOut();
     }
     _user = null;
