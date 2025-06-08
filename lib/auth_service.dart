@@ -1,7 +1,12 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:flutter/src/widgets/framework.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:path/path.dart';
+import 'package:provider/provider.dart';
+
+import 'models/conversation.dart';
 
 class AppUser {
   final String uid;
@@ -29,15 +34,21 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  void _onAuthStateChanged(fb_auth.User? firebaseUser) {
+  void _onAuthStateChanged(fb_auth.User? firebaseUser) async {
     if (firebaseUser == null) {
       _user = null;
+      // Clear conversations when user signs out
+      final conversationProvider = Provider.of<ConversationProvider>(context as BuildContext, listen: false);
+      conversationProvider.setUserId('');
     } else {
       _user = AppUser(
         uid: firebaseUser.uid,
         email: firebaseUser.email,
         phoneNumber: firebaseUser.phoneNumber,
       );
+      // Set user ID in conversation provider
+      final conversationProvider = Provider.of<ConversationProvider>(context as BuildContext, listen: false);
+      conversationProvider.setUserId(firebaseUser.uid);
     }
     notifyListeners();
   }
