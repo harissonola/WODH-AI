@@ -4,19 +4,40 @@ import 'package:intl/intl.dart';
 
 class Message {
   final String id;
-  String content; // Modifiable pour permettre l'édition
+  String content;
   final DateTime timestamp;
   final bool isUser;
+  List<String> versions;
+  List<String> aiResponses;
+  int currentVersionIndex;
 
   Message({
     required this.content,
     required this.isUser,
     String? id,
     DateTime? timestamp,
+    List<String>? versions,
+    List<String>? aiResponses,
+    this.currentVersionIndex = 0,
   })  : id = id ?? const Uuid().v4(),
-        timestamp = timestamp ?? DateTime.now();
+        timestamp = timestamp ?? DateTime.now(),
+        versions = versions ?? [content],
+        aiResponses = aiResponses ?? [];
 
   String get formattedTime => DateFormat.Hm().format(timestamp);
+
+  void addVersion(String newContent, String aiResponse) {
+    versions.add(newContent);
+    aiResponses.add(aiResponse);
+    currentVersionIndex = versions.length - 1;
+  }
+
+  void setVersion(int index) {
+    if (index >= 0 && index < versions.length) {
+      currentVersionIndex = index;
+      content = versions[index];
+    }
+  }
 }
 
 class Conversation {
@@ -52,7 +73,6 @@ class ConversationProvider with ChangeNotifier {
   List<Conversation> get conversations => _conversations;
   Conversation? get currentConversation => _currentConversation;
 
-  // Méthode pour éditer un message existant
   void editMessage(String conversationId, int messageIndex, String newContent) {
     final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
     if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
@@ -61,41 +81,36 @@ class ConversationProvider with ChangeNotifier {
     }
   }
 
-  // NOUVELLE MÉTHODE : Supprimer le dernier message
-  void removeLastMessage() {
-    if (_currentConversation != null && _currentConversation!.messages.isNotEmpty) {
-      _currentConversation!.messages.removeLast();
-      notifyListeners();
+  void addMessageVersion(
+      String conversationId,
+      int messageIndex,
+      String newContent,
+      String aiResponse,
+      ) {
+    final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
+    if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
+      final message = conversation.messages[messageIndex];
+      if (message.isUser) {
+        message.addVersion(newContent, aiResponse);
+        notifyListeners();
+      }
     }
   }
 
-  // Méthode pour supprimer un message spécifique par index
-  void removeMessageAt(int index) {
-    if (_currentConversation != null &&
-        index >= 0 &&
-        index < _currentConversation!.messages.length) {
-      _currentConversation!.messages.removeAt(index);
-      notifyListeners();
-    }
-  }
-
-  // Méthode pour supprimer tous les messages après un index donné
-  void removeMessagesAfter(int index) {
-    if (_currentConversation != null &&
-        index >= 0 &&
-        index < _currentConversation!.messages.length) {
-      _currentConversation!.messages.removeRange(
-          index + 1,
-          _currentConversation!.messages.length
-      );
-      notifyListeners();
+  void setMessageVersion(String messageId, int versionIndex) {
+    for (final conv in _conversations) {
+      for (final msg in conv.messages) {
+        if (msg.id == messageId && msg.isUser) {
+          msg.setVersion(versionIndex);
+          notifyListeners();
+          return;
+        }
+      }
     }
   }
 
   void createNewConversation([String title = 'Nouvelle conversation']) {
-    final newConversation = Conversation(
-      title: title,
-    );
+    final newConversation = Conversation(title: title);
     _conversations.insert(0, newConversation);
     _currentConversation = newConversation;
     notifyListeners();
@@ -128,35 +143,15 @@ class ConversationProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Méthode utilitaire pour vider une conversation
-  void clearCurrentConversation() {
-    if (_currentConversation != null) {
-      _currentConversation!.messages.clear();
-      notifyListeners();
-    }
-  }
-
-  // Méthode pour obtenir le dernier message utilisateur
-  Message? getLastUserMessage() {
-    if (_currentConversation == null) return null;
-
-    try {
-      return _currentConversation!.messages
-          .lastWhere((message) => message.isUser);
-    } catch (e) {
-      return null; // Aucun message utilisateur trouvé
-    }
-  }
-
-  // Méthode pour obtenir le dernier message assistant
-  Message? getLastAssistantMessage() {
-    if (_currentConversation == null) return null;
-
-    try {
-      return _currentConversation!.messages
-          .lastWhere((message) => !message.isUser);
-    } catch (e) {
-      return null; // Aucun message assistant trouvé
-    }
+  List<Map<String, String>> getConversationHistoryUpTo(int messageIndex) {
+    final messages = currentConversation?.messages ?? [];
+    return messages
+        .sublist(0, messageIndex)
+        .where((msg) => msg.content.isNotEmpty)
+        .map((msg) => {
+      "role": msg.isUser ? "user" : "assistant",
+      "content": msg.versions[msg.currentVersionIndex],
+    })
+        .toList();
   }
 }

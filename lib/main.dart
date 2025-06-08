@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wodh_ai/screens/auth_screen.dart';
 import 'package:wodh_ai/screens/home_screen.dart';
+import 'package:wodh_ai/screens/splash_screen.dart';
 
 import 'auth_service.dart';
 import 'models/conversation.dart';
@@ -46,7 +47,7 @@ Future<void> _initializeFirebase() async {
           appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
         ),
       );
-    } else if (!Platform.isLinux) {  // Ne pas initialiser Firebase pour Linux
+    } else if (!Platform.isLinux) {
       await Firebase.initializeApp();
     }
   } catch (e) {
@@ -76,7 +77,11 @@ class WodhAIApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const AuthWrapper(),
+      home: const SplashScreen(),
+      routes: {
+        '/auth': (context) => const AuthWrapper(),
+        '/home': (context) => const ConnectivityWrapper(child: HomeScreen()),
+      },
     );
   }
 }

@@ -176,7 +176,7 @@ class _ChatScreenState extends State<ChatScreen> {
           .where((msg) => msg.content.isNotEmpty)
           .map((msg) => {
         "role": msg.isUser ? "user" : "assistant",
-        "content": msg.content,
+        "content": msg.versions[msg.currentVersionIndex],
       }).toList();
 
       final response = _selectedFiles.isNotEmpty
@@ -208,8 +208,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  bool _containsNonTextFiles(List<PlatformFile> files) {
-    return files.any((file) => !_isTextFile(file));
+  bool _containsUnsupportedFiles(List<PlatformFile> files) {
+    return files.any((file) =>
+    !_isTextFile(file) &&
+        !_isImageFile(file) &&
+        !_isPDFFile(file) &&
+        !_isWordDocument(file));
   }
 
   bool _isTextFile(PlatformFile file) {
@@ -247,14 +251,6 @@ class _ChatScreenState extends State<ChatScreen> {
       default:
         return Icons.insert_drive_file;
     }
-  }
-
-  bool _containsUnsupportedFiles(List<PlatformFile> files) {
-    return files.any((file) =>
-    !_isTextFile(file) &&
-        !_isImageFile(file) &&
-        !_isPDFFile(file) &&
-        !_isWordDocument(file));
   }
 
   bool _isImageFile(PlatformFile file) {
@@ -339,12 +335,15 @@ class _ChatScreenState extends State<ChatScreen> {
                         itemBuilder: (context, index) {
                           final message = conversation!.messages[index];
                           return MessageBubble(
-                            messageId: '',
-                            message: message.content,
+                            messageId: message.id,
+                            message: message.versions[message.currentVersionIndex],
                             isUser: message.isUser,
                             time: message.formattedTime,
                             scrollToBottom: _scrollToBottom,
                             setSendingState: (isSending) => setState(() => _isSending = isSending),
+                            versions: message.versions,
+                            aiResponses: message.aiResponses,
+                            currentVersionIndex: message.currentVersionIndex,
                           );
                         },
                       );
@@ -582,6 +581,9 @@ class MessageBubble extends StatefulWidget {
   final String time;
   final VoidCallback scrollToBottom;
   final Function(bool) setSendingState;
+  final List<String> versions;
+  final List<String> aiResponses;
+  final int currentVersionIndex;
 
   const MessageBubble({
     super.key,
@@ -591,6 +593,9 @@ class MessageBubble extends StatefulWidget {
     required this.time,
     required this.scrollToBottom,
     required this.setSendingState,
+    this.versions = const [],
+    this.aiResponses = const [],
+    this.currentVersionIndex = 0,
   });
 
   @override
@@ -619,28 +624,53 @@ class _MessageBubbleState extends State<MessageBubble> {
     return codeBlockRegex.hasMatch(message);
   }
 
-  void _saveEdit() {
+  Future<void> _saveEdit() async {
     if (_editController.text.trim().isNotEmpty) {
       final provider = Provider.of<ConversationProvider>(context, listen: false);
       if (provider.currentConversation != null) {
         final messages = provider.currentConversation!.messages;
-        final messageIndex = messages.indexWhere((m) => m.content == widget.message);
+        final messageIndex = messages.indexWhere((m) => m.id == widget.messageId);
 
         if (messageIndex != -1) {
           final newContent = _editController.text;
+
+          // Mettre à jour le message utilisateur
           provider.editMessage(
             provider.currentConversation!.id,
             messageIndex,
             newContent,
           );
+
+          // Envoyer la nouvelle version à l'IA et obtenir une réponse
+          widget.setSendingState(true);
+
+          try {
+            final conversationHistory = provider.getConversationHistoryUpTo(messageIndex);
+            final response = await OpenRouterService.sendPrompt(
+              newContent,
+              conversationHistory: conversationHistory,
+            );
+
+            // Ajouter la nouvelle version et la réponse de l'IA
+            provider.addMessageVersion(
+              provider.currentConversation!.id,
+              messageIndex,
+              newContent,
+              response,
+            );
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erreur: ${e.toString()}'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          } finally {
+            widget.setSendingState(false);
+          }
+
           setState(() => _isEditing = false);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Impossible de trouver le message à modifier'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+          widget.scrollToBottom();
         }
       }
     }
@@ -694,7 +724,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Merci pour votre feedback positif!'),
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -703,7 +733,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Nous améliorerons notre réponse.'),
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -713,7 +743,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Message copié!'),
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -729,11 +759,9 @@ class _MessageBubbleState extends State<MessageBubble> {
             Container(
               margin: const EdgeInsets.only(right: 8),
               child: CircleAvatar(
-                backgroundColor: Colors.purpleAccent.withOpacity(0.2),
-                child: Icon(
-                  Icons.smart_toy,
-                  color: Colors.deepPurple,
-                ),
+                backgroundColor: Colors.transparent,
+                backgroundImage: AssetImage('assets/logo.png'),
+                radius: 20,
               ),
             ),
           Flexible(
@@ -888,6 +916,49 @@ class _MessageBubbleState extends State<MessageBubble> {
                           ],
                         ],
                       ),
+                      if (widget.isUser && widget.versions.length > 1) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.chevron_left,
+                                  size: 18,
+                                  color: widget.isUser ? Colors.white70 : Colors.deepPurple),
+                              onPressed: widget.currentVersionIndex > 0
+                                  ? () {
+                                final provider = Provider.of<ConversationProvider>(context, listen: false);
+                                provider.setMessageVersion(
+                                  widget.messageId,
+                                  widget.currentVersionIndex - 1,
+                                );
+                              }
+                                  : null,
+                            ),
+                            Text(
+                              '<${widget.currentVersionIndex + 1}/${widget.versions.length}>',
+                              style: TextStyle(
+                                color: widget.isUser ? Colors.white70 : Colors.deepPurple,
+                                fontSize: 12,
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.chevron_right,
+                                  size: 18,
+                                  color: widget.isUser ? Colors.white70 : Colors.deepPurple),
+                              onPressed: widget.currentVersionIndex < widget.versions.length - 1
+                                  ? () {
+                                final provider = Provider.of<ConversationProvider>(context, listen: false);
+                                provider.setMessageVersion(
+                                  widget.messageId,
+                                  widget.currentVersionIndex + 1,
+                                );
+                              }
+                                  : null,
+                            ),
+                          ],
+                        ),
+                      ],
                       if (!widget.isUser) ...[
                         const SizedBox(height: 8),
                         Row(
