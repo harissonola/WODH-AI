@@ -81,6 +81,7 @@ class ConversationProvider with ChangeNotifier {
     }
   }
 
+  // Modifiez la méthode addMessageVersion pour ajouter automatiquement la réponse
   void addMessageVersion(
       String conversationId,
       int messageIndex,
@@ -92,6 +93,14 @@ class ConversationProvider with ChangeNotifier {
       final message = conversation.messages[messageIndex];
       if (message.isUser) {
         message.addVersion(newContent, aiResponse);
+
+        // Ajouter automatiquement la réponse de l'IA après la version modifiée
+        final responseMessage = Message(
+          content: aiResponse,
+          isUser: false,
+        );
+        conversation.messages.insert(messageIndex + 1, responseMessage);
+
         notifyListeners();
       }
     }

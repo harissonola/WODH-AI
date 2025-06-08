@@ -329,24 +329,37 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Consumer<ConversationProvider>(
                     builder: (context, provider, _) {
                       return ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.only(top: 8, bottom: 8),
-                        itemCount: conversation?.messages.length ?? 0,
-                        itemBuilder: (context, index) {
-                          final message = conversation!.messages[index];
-                          return MessageBubble(
-                            messageId: message.id,
-                            message: message.versions[message.currentVersionIndex],
-                            isUser: message.isUser,
-                            time: message.formattedTime,
-                            scrollToBottom: _scrollToBottom,
-                            setSendingState: (isSending) => setState(() => _isSending = isSending),
-                            versions: message.versions,
-                            aiResponses: message.aiResponses,
-                            currentVersionIndex: message.currentVersionIndex,
-                          );
-                        },
-                      );
+                          controller: _scrollController,
+                          padding: const EdgeInsets.only(top: 8, bottom: 8),
+                          itemCount: conversation?.messages.length ?? 0,
+                          itemBuilder: (context, index) {
+                            final message = conversation!.messages[index];
+
+                            // Pour les messages de l'IA, vérifiez s'ils sont liés à une version
+                            if (!message.isUser && index > 0) {
+                              final previousMessage = conversation.messages[index - 1];
+                              if (previousMessage.isUser && previousMessage.aiResponses.isNotEmpty) {
+                                // Affichez la réponse correspondant à la version actuelle
+                                final versionIndex = previousMessage.currentVersionIndex;
+                                if (versionIndex < previousMessage.aiResponses.length) {
+                                  message.content = previousMessage.aiResponses[versionIndex];
+                                }
+                              }
+                            }
+
+                            return MessageBubble(
+                              messageId: message.id,
+                              message: message.content,
+                              isUser: message.isUser,
+                              time: message.formattedTime,
+                              scrollToBottom: _scrollToBottom,
+                              setSendingState: (isSending) => setState(() => _isSending = isSending),
+                              versions: message.isUser ? message.versions : const [],
+                              aiResponses: message.isUser ? message.aiResponses : const [],
+                              currentVersionIndex: message.isUser ? message.currentVersionIndex : 0,
+                            );
+                          },
+                        );
                     },
                   ),
                 ),
@@ -634,6 +647,12 @@ class _MessageBubbleState extends State<MessageBubble> {
         if (messageIndex != -1) {
           final newContent = _editController.text;
 
+          // Supprimer l'ancienne réponse de l'IA si elle existe
+          if (messageIndex + 1 < messages.length &&
+              !messages[messageIndex + 1].isUser) {
+            provider.currentConversation!.messages.removeAt(messageIndex + 1);
+          }
+
           // Mettre à jour le message utilisateur
           provider.editMessage(
             provider.currentConversation!.id,
@@ -641,7 +660,7 @@ class _MessageBubbleState extends State<MessageBubble> {
             newContent,
           );
 
-          // Envoyer la nouvelle version à l'IA et obtenir une réponse
+          // Envoyer la nouvelle version à l'IA
           widget.setSendingState(true);
 
           try {
@@ -651,7 +670,7 @@ class _MessageBubbleState extends State<MessageBubble> {
               conversationHistory: conversationHistory,
             );
 
-            // Ajouter la nouvelle version et la réponse de l'IA
+            // Ajouter la nouvelle version et la réponse
             provider.addMessageVersion(
               provider.currentConversation!.id,
               messageIndex,
