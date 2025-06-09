@@ -1,206 +1,193 @@
 import 'dart:async';
-import 'dart:io';
-
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:wodh_ai/screens/auth_screen.dart';
-import 'package:wodh_ai/screens/home_screen.dart';
-import 'package:wodh_ai/screens/splash_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 
-import 'auth_service.dart';
-import 'models/conversation.dart';
+class Conversation {
+  final String id;
+  final String? title;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  Conversation({
+    required this.id,
+    this.title,
+    required this.createdAt,
+    required this.updatedAt,
+  });
 
-  await _initializeFirebase();
+  factory Conversation.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Conversation(
+      id: doc.id,
+      title: data['title'],
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+    );
+  }
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthService()),
-        ChangeNotifierProvider(create: (_) => ConversationProvider()),
-        StreamProvider<List<ConnectivityResult>>(
-          create: (_) => Connectivity().onConnectivityChanged,
-          initialData: [ConnectivityResult.none],
-        ),
-      ],
-      child: const WodhAIApp(),
-    ),
-  );
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+    };
+  }
 }
 
-Future<void> _initializeFirebase() async {
-  try {
-    if (kIsWeb) {
-      await Firebase.initializeApp(
-        options: const FirebaseOptions(
-          apiKey: "AIzaSyCjb85UwE7nrp2ENO-1TRZoBK6q6rdxb2s",
-          authDomain: "wodh-ai.firebaseapp.com",
-          projectId: "wodh-ai",
-          storageBucket: "wodh-ai.appspot.com",
-          messagingSenderId: "36323799698",
-          appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
-        ),
-      );
-    } else if (!Platform.isLinux) {
-      await Firebase.initializeApp();
+class Message {
+  final String id;
+  final String content;
+  final DateTime timestamp;
+  final bool isUser;
+
+  Message({
+    required this.id,
+    required this.content,
+    required this.timestamp,
+    required this.isUser,
+  });
+
+  factory Message.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Message(
+      id: doc.id,
+      content: data['content'],
+      timestamp: (data['timestamp'] as Timestamp).toDate(),
+      isUser: data['isUser'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'content': content,
+      'timestamp': Timestamp.fromDate(timestamp),
+      'isUser': isUser,
+    };
+  }
+}
+
+class ConversationProvider with ChangeNotifier {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String? _userId;
+  List<Conversation> _conversations = [];
+  StreamSubscription<QuerySnapshot>? _conversationsSubscription;
+
+  List<Conversation> get conversations => _conversations;
+
+  void setUserId(String? userId) {
+    if (_userId == userId) return;
+
+    _userId = userId;
+    _conversationsSubscription?.cancel();
+    _conversations = [];
+
+    if (userId != null) {
+      _loadConversations();
     }
-  } catch (e) {
-    debugPrint('Firebase initialization error: $e');
-    // Vous pourriez vouloir afficher une interface utilisateur d'erreur ici
+
+    notifyListeners();
   }
-}
 
-class WodhAIApp extends StatelessWidget {
-  const WodhAIApp({super.key});
+  void _loadConversations() {
+    _conversationsSubscription = _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('conversations')
+        .orderBy('updatedAt', descending: true)
+        .snapshots()
+        .listen((snapshot) {
+      _conversations = snapshot.docs
+          .map((doc) => Conversation.fromFirestore(doc))
+          .toList();
+      notifyListeners();
+    });
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Wodh AI',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          centerTitle: true,
-          backgroundColor: Colors.white,
-          iconTheme: IconThemeData(color: Colors.deepPurple),
-          titleTextStyle: TextStyle(
-            color: Colors.deepPurple,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      home: const SplashScreen(),
-      routes: {
-        '/auth': (context) => const AuthWrapper(),
-        '/home': (context) => const ConnectivityWrapper(child: HomeScreen()),
-      },
-      builder: (context, child) {
-        return StreamBuilder<fb_auth.User?>(
-          stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+  Future<Conversation> createConversation() async {
+    final docRef = await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('conversations')
+        .add({
+      'title': 'Nouvelle conversation',
+      'createdAt': Timestamp.now(),
+      'updatedAt': Timestamp.now(),
+    });
 
-            // Gérer les erreurs d'authentification ici si nécessaire
-            if (snapshot.hasError) {
-              return Scaffold(
-                body: Center(
-                  child: Text('Erreur d\'authentification: ${snapshot.error}'),
-                ),
-              );
-            }
-
-            return child!;
-          },
-        );
-      },
+    return Conversation(
+      id: docRef.id,
+      title: 'Nouvelle conversation',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
     );
   }
-}
 
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<AuthService>(
-      builder: (context, authService, _) {
-        if (authService.isAuthenticated) {
-          return const ConnectivityWrapper(child: HomeScreen());
-        }
-        return const ConnectivityWrapper(child: AuthScreen());
-      },
-    );
+  Future<void> updateConversationTitle(String conversationId, String newTitle) async {
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('conversations')
+        .doc(conversationId)
+        .update({
+      'title': newTitle,
+      'updatedAt': Timestamp.now(),
+    });
   }
-}
 
-class ConnectivityWrapper extends StatefulWidget {
-  final Widget child;
-  const ConnectivityWrapper({super.key, required this.child});
+  Future<void> deleteConversation(String conversationId) async {
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('conversations')
+        .doc(conversationId)
+        .delete();
+  }
 
-  @override
-  State<ConnectivityWrapper> createState() => _ConnectivityWrapperState();
-}
+  Stream<List<Message>> getMessages(String conversationId) {
+    return _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('conversations')
+        .doc(conversationId)
+        .collection('messages')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => Message.fromFirestore(doc))
+        .toList());
+  }
 
-class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
-  bool _isConnected = true;
-  bool _showConnectionBanner = false;
-  Timer? _connectionBannerTimer;
+  Future<void> addMessage(
+      String conversationId,
+      String content,
+      bool isUser,
+      ) async {
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('conversations')
+        .doc(conversationId)
+        .collection('messages')
+        .add({
+      'content': content,
+      'timestamp': Timestamp.now(),
+      'isUser': isUser,
+    });
 
-  @override
-  void initState() {
-    super.initState();
-    _checkInitialConnection();
+    await _firestore
+        .collection('users')
+        .doc(_userId)
+        .collection('conversations')
+        .doc(conversationId)
+        .update({
+      'updatedAt': Timestamp.now(),
+    });
   }
 
   @override
   void dispose() {
-    _connectionBannerTimer?.cancel();
+    _conversationsSubscription?.cancel();
     super.dispose();
-  }
-
-  Future<void> _checkInitialConnection() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    _updateConnectionStatus(connectivityResult);
-  }
-
-  void _updateConnectionStatus(List<ConnectivityResult> results) {
-    final isConnected = results.isNotEmpty &&
-        results.any((result) => result != ConnectivityResult.none);
-
-    if (isConnected != _isConnected) {
-      setState(() {
-        _isConnected = isConnected;
-        _showConnectionBanner = true;
-      });
-
-      _connectionBannerTimer?.cancel();
-      _connectionBannerTimer = Timer(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() => _showConnectionBanner = false);
-        }
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          widget.child,
-          if (_showConnectionBanner)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Material(
-                color: _isConnected ? Colors.green : Colors.red,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    _isConnected
-                        ? 'Connexion internet rétablie'
-                        : 'Pas de connexion internet',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 }
