@@ -155,23 +155,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final provider = Provider.of<ConversationProvider>(context, listen: false);
 
-    if (provider.currentConversation?.messages.isEmpty ?? true) {
-      final generatedTitle = _generateTitleFromContent(content);
-      provider.updateConversationTitle(provider.currentConversation!.id, generatedTitle);
-    }
-
-    provider.addMessageToCurrent(
-        content + (_selectedFiles.isNotEmpty
-            ? " (${_selectedFiles.length} fichier(s) joint(s)${_containsUnsupportedFiles(_selectedFiles) ? ' [certains fichiers nécessitent une analyse avancée]' : ''})"
-            : ""),
-        true
-    );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottom();
-    });
-
     try {
+      if (provider.currentConversation?.messages.isEmpty ?? true) {
+        final generatedTitle = _generateTitleFromContent(content);
+        await provider.updateConversationTitle(
+            provider.currentConversation!.id,
+            generatedTitle
+        );
+      }
+
+      await provider.addMessageToCurrent(
+          content + (_selectedFiles.isNotEmpty
+              ? " (${_selectedFiles.length} fichier(s) joint(s)${_containsUnsupportedFiles(_selectedFiles) ? ' [certains fichiers nécessitent une analyse avancée]' : ''})"
+              : ""),
+          true
+      );
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
+
       final conversationHistory = provider.currentConversation?.messages
           .where((msg) => msg.content.isNotEmpty)
           .map((msg) => {
@@ -190,16 +193,19 @@ class _ChatScreenState extends State<ChatScreen> {
         conversationHistory: conversationHistory,
       );
 
-      provider.addMessageToCurrent(response, false);
+      await provider.addMessageToCurrent(response, false);
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
       });
     } catch (e) {
-      provider.addMessageToCurrent('Erreur: $e', false);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToBottom();
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      await provider.addMessageToCurrent('Erreur: $e', false);
     } finally {
       setState(() {
         _selectedFiles = [];
@@ -207,6 +213,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
   }
+
 
   bool _containsUnsupportedFiles(List<PlatformFile> files) {
     return files.any((file) =>

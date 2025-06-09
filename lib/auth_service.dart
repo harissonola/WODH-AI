@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
@@ -11,26 +12,40 @@ import 'models/conversation.dart';
 class AppUser {
   final String uid;
   final String? email;
+  final String? displayName;
   final String? phoneNumber;
+  final String? photoURL;
 
-  AppUser({required this.uid, this.email, this.phoneNumber});
+  AppUser({
+    required this.uid,
+    this.email,
+    this.displayName,
+    this.phoneNumber,
+    this.photoURL,
+  });
 }
 
 class AuthService with ChangeNotifier {
   AppUser? _user;
   GoogleSignIn? _googleSignIn;
   fb_auth.FirebaseAuth? _auth;
+  StreamSubscription<fb_auth.User?>? _authStateSubscription;
 
   bool get isAuthenticated => _user != null;
+  AppUser? get currentUser => _user;
 
   AuthService() {
     if (!Platform.isLinux) {
       _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
       _auth = fb_auth.FirebaseAuth.instance;
-      _auth!.authStateChanges().listen(_onAuthStateChanged);
+      _authStateSubscription = _auth!.authStateChanges().listen(_onAuthStateChanged);
     } else {
       // Mode mock pour Linux
-      _user = AppUser(uid: 'mock_uid_linux', email: 'mockuser@linux.dev');
+      _user = AppUser(
+        uid: 'mock_uid_linux',
+        email: 'mockuser@linux.dev',
+        displayName: 'Mock User',
+      );
     }
   }
 
@@ -38,17 +53,20 @@ class AuthService with ChangeNotifier {
     if (firebaseUser == null) {
       _user = null;
       // Clear conversations when user signs out
-      final conversationProvider = Provider.of<ConversationProvider>(context as BuildContext, listen: false);
-      conversationProvider.setUserId('');
+      final context = this.context as BuildContext;
+      Provider.of<ConversationProvider>(context, listen: false).setUserId(null);
     } else {
       _user = AppUser(
         uid: firebaseUser.uid,
         email: firebaseUser.email,
+        displayName: firebaseUser.displayName,
         phoneNumber: firebaseUser.phoneNumber,
+        photoURL: firebaseUser.photoURL,
       );
+
       // Set user ID in conversation provider
-      final conversationProvider = Provider.of<ConversationProvider>(context as BuildContext, listen: false);
-      conversationProvider.setUserId(firebaseUser.uid);
+      final context = this.context as BuildContext;
+      Provider.of<ConversationProvider>(context, listen: false).setUserId(firebaseUser.uid);
     }
     notifyListeners();
   }
@@ -174,20 +192,27 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  // Utilitaires
   AppUser _createAppUser(fb_auth.User? firebaseUser) {
     if (firebaseUser == null) throw Exception('Firebase user is null');
+
     _user = AppUser(
       uid: firebaseUser.uid,
       email: firebaseUser.email,
+      displayName: firebaseUser.displayName,
       phoneNumber: firebaseUser.phoneNumber,
+      photoURL: firebaseUser.photoURL,
     );
+
     notifyListeners();
     return _user!;
   }
 
   AppUser _mockUser() {
-    _user = AppUser(uid: 'mock_uid_linux', email: 'mockuser@linux.dev');
+    _user = AppUser(
+      uid: 'mock_uid_linux',
+      email: 'mockuser@linux.dev',
+      displayName: 'Mock User',
+    );
     notifyListeners();
     return _user!;
   }
@@ -203,7 +228,11 @@ class AuthService with ChangeNotifier {
 
   Future<void> checkAuthentication() async {
     if (Platform.isLinux) {
-      _user = AppUser(uid: 'mock_uid_linux', email: 'mockuser@linux.dev');
+      _user = AppUser(
+        uid: 'mock_uid_linux',
+        email: 'mockuser@linux.dev',
+        displayName: 'Mock User',
+      );
       notifyListeners();
       return;
     }
@@ -214,7 +243,9 @@ class AuthService with ChangeNotifier {
         _user = AppUser(
           uid: current.uid,
           email: current.email,
+          displayName: current.displayName,
           phoneNumber: current.phoneNumber,
+          photoURL: current.photoURL,
         );
       } else {
         _user = null;
@@ -225,5 +256,11 @@ class AuthService with ChangeNotifier {
       _user = null;
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription?.cancel();
+    super.dispose();
   }
 }

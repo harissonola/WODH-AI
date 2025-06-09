@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -52,6 +53,7 @@ Future<void> _initializeFirebase() async {
     }
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
+    // Vous pourriez vouloir afficher une interface utilisateur d'erreur ici
   }
 }
 
@@ -81,6 +83,27 @@ class WodhAIApp extends StatelessWidget {
       routes: {
         '/auth': (context) => const AuthWrapper(),
         '/home': (context) => const ConnectivityWrapper(child: HomeScreen()),
+      },
+      builder: (context, child) {
+        return StreamBuilder<fb_auth.User?>(
+          stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            // Gérer les erreurs d'authentification ici si nécessaire
+            if (snapshot.hasError) {
+              return Scaffold(
+                body: Center(
+                  child: Text('Erreur d\'authentification: ${snapshot.error}'),
+                ),
+              );
+            }
+
+            return child!;
+          },
+        );
       },
     );
   }

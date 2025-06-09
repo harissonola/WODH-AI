@@ -47,8 +47,18 @@ class HomeScreen extends StatelessWidget {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.exit_to_app, color: Colors.white),
-                  onPressed: () =>
-                      Provider.of<AuthService>(context, listen: false).signOut(),
+                  onPressed: () async {
+                    try {
+                      await Provider.of<AuthService>(context, listen: false).signOut();
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Erreur lors de la déconnexion: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
                 ),
               ],
               flexibleSpace: Container(
@@ -218,13 +228,22 @@ class HomeScreen extends StatelessWidget {
           ),
           child: const Icon(Icons.add, size: 30),
         ),
-        onPressed: () {
-          Provider.of<ConversationProvider>(context, listen: false)
-              .createNewConversation();
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const ChatScreen()),
-          );
+        onPressed: () async {
+          try {
+            await Provider.of<ConversationProvider>(context, listen: false)
+                .createNewConversation();
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ChatScreen()),
+            );
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erreur lors de la création: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         },
       ),
     );
@@ -249,9 +268,19 @@ class HomeScreen extends StatelessWidget {
           TextButton(
             child: const Text('Supprimer',
                 style: TextStyle(color: Colors.red)),
-            onPressed: () {
-              provider.deleteConversation(id);
-              Navigator.pop(context);
+            onPressed: () async {
+              try {
+                await provider.deleteConversation(id);
+                Navigator.pop(context);
+              } catch (e) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Erreur lors de la suppression: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
           ),
         ],
