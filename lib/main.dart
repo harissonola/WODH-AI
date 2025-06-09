@@ -84,7 +84,13 @@ class WodhAIApp extends StatelessWidget {
         '/auth': (context) => const AuthWrapper(),
         '/home': (context) => const ConnectivityWrapper(child: HomeScreen()),
       },
+      // Correction : Conditionner le StreamBuilder seulement si Firebase est disponible
       builder: (context, child) {
+        // Sur Linux, on n'utilise pas Firebase, donc on retourne directement l'enfant
+        if (Platform.isLinux) {
+          return child!;
+        }
+
         return StreamBuilder<fb_auth.User?>(
           stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
           builder: (context, snapshot) {
@@ -176,31 +182,37 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          widget.child,
-          if (_showConnectionBanner)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Material(
-                color: _isConnected ? Colors.green : Colors.red,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    _isConnected
-                        ? 'Connexion internet rétablie'
-                        : 'Pas de connexion internet',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
+    return Consumer<List<ConnectivityResult>>(
+      builder: (context, connectivityResults, child) {
+        _updateConnectionStatus(connectivityResults);
+
+        return Scaffold(
+          body: Stack(
+            children: [
+              widget.child,
+              if (_showConnectionBanner)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Material(
+                    color: _isConnected ? Colors.green : Colors.red,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                        _isConnected
+                            ? 'Connexion internet rétablie'
+                            : 'Pas de connexion internet',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-        ],
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
