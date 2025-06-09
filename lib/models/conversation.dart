@@ -27,9 +27,9 @@ class Message {
 
   factory Message.fromFirestore(Map<String, dynamic> data) {
     return Message(
-      id: data['id'],
+      id: data['id'] ?? const Uuid().v4(),
       content: data['content'],
-      isUser: data['isUser'],
+      isUser: data['isUser'] ?? false,
       timestamp: (data['timestamp'] as Timestamp).toDate(),
       versions: List<String>.from(data['versions'] ?? []),
       aiResponses: List<String>.from(data['aiResponses'] ?? []),
@@ -68,14 +68,16 @@ class Message {
 class Conversation {
   final String id;
   String title;
-  final List<Message> messages;
+  late final List<Message> messages;
   final DateTime createdAt;
+  String? userId;
 
   Conversation({
     String? id,
     required this.title,
     List<Message>? messages,
     DateTime? createdAt,
+    this.userId,
   })  : id = id ?? const Uuid().v4(),
         messages = messages ?? [],
         createdAt = createdAt ?? DateTime.now();
@@ -84,8 +86,9 @@ class Conversation {
     final data = doc.data() as Map<String, dynamic>;
     return Conversation(
       id: doc.id,
-      title: data['title'],
+      title: data['title'] ?? 'Nouvelle conversation',
       createdAt: (data['createdAt'] as Timestamp).toDate(),
+      userId: data['userId'],
     );
   }
 
@@ -93,6 +96,7 @@ class Conversation {
     return {
       'title': title,
       'createdAt': createdAt,
+      'userId': userId,
     };
   }
 
@@ -116,13 +120,19 @@ class ConversationProvider with ChangeNotifier {
   List<Conversation> get conversations => _conversations;
   Conversation? get currentConversation => _currentConversation;
 
-  void setUserId(String userId) {
+  void setUserId(String? userId) {
     _userId = userId;
-    _loadConversations();
+    if (userId != null) {
+      _loadConversations();
+    } else {
+      _conversations = [];
+      _currentConversation = null;
+      notifyListeners();
+    }
   }
 
   Future<void> _loadConversations() async {
-    if (_userId == null) return;
+    if (_userId == null || _userId!.isEmpty) return;
 
     try {
       final querySnapshot = await _firestore
@@ -144,39 +154,45 @@ class ConversationProvider with ChangeNotifier {
             .orderBy('timestamp')
             .get();
 
-        conv.messages.addAll(messagesSnapshot.docs
-            .map((doc) => Message.fromFirestore(doc.data())));
+        conv.messages = messagesSnapshot.docs
+            .map((doc) => Message.fromFirestore(doc.data()))
+            .toList();
       }
 
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading conversations: $e');
+      rethrow;
     }
   }
 
   Future<void> _saveConversation(Conversation conversation) async {
-    if (_userId == null) return;
+    if (_userId == null || _userId!.isEmpty) {
+      debugPrint('Cannot save conversation - no user ID');
+      return;
+    }
 
     try {
+      conversation.userId = _userId;
       await _firestore
           .collection('conversations')
           .doc(conversation.id)
-          .set({
-        ...conversation.toFirestore(),
-        'userId': _userId,
-      });
+          .set(conversation.toFirestore());
 
       // Save all messages
+      final batch = _firestore.batch();
       for (var message in conversation.messages) {
-        await _firestore
+        final messageRef = _firestore
             .collection('conversations')
             .doc(conversation.id)
             .collection('messages')
-            .doc(message.id)
-            .set(message.toFirestore());
+            .doc(message.id);
+        batch.set(messageRef, message.toFirestore());
       }
+      await batch.commit();
     } catch (e) {
       debugPrint('Error saving conversation: $e');
+      rethrow;
     }
   }
 
@@ -189,66 +205,25 @@ class ConversationProvider with ChangeNotifier {
           .collection('messages')
           .get();
 
+      final batch = _firestore.batch();
       for (var doc in messages.docs) {
-        await doc.reference.delete();
+        batch.delete(doc.reference);
       }
+      await batch.commit();
 
       // Then delete the conversation
       await _firestore.collection('conversations').doc(id).delete();
     } catch (e) {
       debugPrint('Error deleting conversation: $e');
-    }
-  }
-
-  void editMessage(String conversationId, int messageIndex, String newContent) {
-    final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
-    if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
-      conversation.messages[messageIndex].content = newContent;
-      _saveConversation(conversation);
-      notifyListeners();
-    }
-  }
-
-  void addMessageVersion(
-      String conversationId,
-      int messageIndex,
-      String newContent,
-      String aiResponse,
-      ) {
-    final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
-    if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
-      final message = conversation.messages[messageIndex];
-      if (message.isUser) {
-        message.addVersion(newContent, aiResponse);
-
-        // Add AI response
-        final responseMessage = Message(
-          content: aiResponse,
-          isUser: false,
-        );
-        conversation.messages.insert(messageIndex + 1, responseMessage);
-
-        _saveConversation(conversation);
-        notifyListeners();
-      }
-    }
-  }
-
-  void setMessageVersion(String messageId, int versionIndex) {
-    for (final conv in _conversations) {
-      for (final msg in conv.messages) {
-        if (msg.id == messageId && msg.isUser) {
-          msg.setVersion(versionIndex);
-          _saveConversation(conv);
-          notifyListeners();
-          return;
-        }
-      }
+      rethrow;
     }
   }
 
   Future<void> createNewConversation([String title = 'Nouvelle conversation']) async {
-    final newConversation = Conversation(title: title);
+    final newConversation = Conversation(
+      title: title,
+      userId: _userId,
+    );
     _conversations.insert(0, newConversation);
     _currentConversation = newConversation;
     await _saveConversation(newConversation);
@@ -267,19 +242,20 @@ class ConversationProvider with ChangeNotifier {
           .orderBy('timestamp')
           .get();
 
-      _currentConversation!.messages.addAll(messagesSnapshot.docs
-          .map((doc) => Message.fromFirestore(doc.data())));
+      _currentConversation!.messages = messagesSnapshot.docs
+          .map((doc) => Message.fromFirestore(doc.data()))
+          .toList();
     }
 
     notifyListeners();
   }
 
   Future<void> deleteConversation(String id) async {
+    await _deleteConversation(id);
     _conversations.removeWhere((conv) => conv.id == id);
     if (_currentConversation?.id == id) {
       _currentConversation = null;
     }
-    await _deleteConversation(id);
     notifyListeners();
   }
 
@@ -291,7 +267,6 @@ class ConversationProvider with ChangeNotifier {
     final message = Message(content: content, isUser: isUser);
     _currentConversation!.addMessage(message);
 
-    // Save message to Firestore
     await _firestore
         .collection('conversations')
         .doc(_currentConversation!.id)
@@ -307,6 +282,57 @@ class ConversationProvider with ChangeNotifier {
     conversation.updateTitle(newTitle);
     await _saveConversation(conversation);
     notifyListeners();
+  }
+
+  Future<void> editMessage(
+      String conversationId,
+      int messageIndex,
+      String newContent,
+      ) async {
+    final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
+    if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
+      conversation.messages[messageIndex].content = newContent;
+      await _saveConversation(conversation);
+      notifyListeners();
+    }
+  }
+
+  Future<void> addMessageVersion(
+      String conversationId,
+      int messageIndex,
+      String newContent,
+      String aiResponse,
+      ) async {
+    final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
+    if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
+      final message = conversation.messages[messageIndex];
+      if (message.isUser) {
+        message.addVersion(newContent, aiResponse);
+
+        // Add AI response
+        final responseMessage = Message(
+          content: aiResponse,
+          isUser: false,
+        );
+        conversation.messages.insert(messageIndex + 1, responseMessage);
+
+        await _saveConversation(conversation);
+        notifyListeners();
+      }
+    }
+  }
+
+  void setMessageVersion(String messageId, int versionIndex) {
+    for (final conv in _conversations) {
+      for (final msg in conv.messages) {
+        if (msg.id == messageId && msg.isUser) {
+          msg.setVersion(versionIndex);
+          _saveConversation(conv);
+          notifyListeners();
+          return;
+        }
+      }
+    }
   }
 
   List<Map<String, String>> getConversationHistoryUpTo(int messageIndex) {
