@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:google_sign_in/google_sign_in.dart';
@@ -28,23 +29,27 @@ class AuthService with ChangeNotifier {
   GoogleSignIn? _googleSignIn;
   fb_auth.FirebaseAuth? _auth;
   StreamSubscription<fb_auth.User?>? _authStateSubscription;
+  bool _isInitialized = false;
 
   bool get isAuthenticated => _user != null;
   AppUser? get currentUser => _user;
+  bool get isInitialized => _isInitialized;
 
   AuthService() {
+    _initializeAuth();
+  }
+
+  Future<void> _initializeAuth() async {
     if (!Platform.isLinux) {
       _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
       _auth = fb_auth.FirebaseAuth.instance;
       _authStateSubscription = _auth!.authStateChanges().listen(_onAuthStateChanged);
-    } else {
-      // Mode mock pour Linux
-      _user = AppUser(
-        uid: 'mock_uid_linux',
-        email: 'mockuser@linux.dev',
-        displayName: 'Mock User',
-      );
     }
+    _isInitialized = true;
+    // Utiliser WidgetsBinding pour différer la notification après la construction
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void _onAuthStateChanged(fb_auth.User? firebaseUser) async {
@@ -64,7 +69,9 @@ class AuthService with ChangeNotifier {
 
   // Email/Password
   Future<AppUser?> signInWithEmailAndPassword(String email, String password) async {
-    if (Platform.isLinux) return _mockUser();
+    if (Platform.isLinux) {
+      throw Exception('Firebase Auth n\'est pas disponible sur Linux. Veuillez utiliser une autre plateforme.');
+    }
 
     try {
       final userCredential = await _auth!.signInWithEmailAndPassword(
@@ -79,7 +86,9 @@ class AuthService with ChangeNotifier {
   }
 
   Future<AppUser?> registerWithEmailAndPassword(String email, String password) async {
-    if (Platform.isLinux) return _mockUser();
+    if (Platform.isLinux) {
+      throw Exception('Firebase Auth n\'est pas disponible sur Linux. Veuillez utiliser une autre plateforme.');
+    }
 
     try {
       final userCredential = await _auth!.createUserWithEmailAndPassword(
@@ -95,8 +104,7 @@ class AuthService with ChangeNotifier {
 
   Future<void> resetPassword(String email) async {
     if (Platform.isLinux) {
-      debugPrint('Mock: Email de réinitialisation envoyé à $email');
-      return;
+      throw Exception('Firebase Auth n\'est pas disponible sur Linux. Veuillez utiliser une autre plateforme.');
     }
 
     try {
@@ -109,7 +117,9 @@ class AuthService with ChangeNotifier {
 
   // Google
   Future<AppUser?> signInWithGoogle() async {
-    if (Platform.isLinux) return _mockUser();
+    if (Platform.isLinux) {
+      throw Exception('Firebase Auth n\'est pas disponible sur Linux. Veuillez utiliser une autre plateforme.');
+    }
 
     try {
       final googleUser = await _googleSignIn!.signIn();
@@ -132,7 +142,9 @@ class AuthService with ChangeNotifier {
 
   // Microsoft
   Future<AppUser?> signInWithMicrosoft() async {
-    if (Platform.isLinux) return _mockUser();
+    if (Platform.isLinux) {
+      throw Exception('Firebase Auth n\'est pas disponible sur Linux. Veuillez utiliser une autre plateforme.');
+    }
 
     try {
       final userCredential = await _auth!.signInWithProvider(
@@ -153,7 +165,9 @@ class AuthService with ChangeNotifier {
     required Function(fb_auth.PhoneAuthCredential) onVerificationCompleted,
     required Function(String) onCodeAutoRetrievalTimeout,
   }) async {
-    if (Platform.isLinux) return;
+    if (Platform.isLinux) {
+      throw Exception('Firebase Auth n\'est pas disponible sur Linux. Veuillez utiliser une autre plateforme.');
+    }
 
     await _auth!.verifyPhoneNumber(
       phoneNumber: phoneNumber,
@@ -168,7 +182,9 @@ class AuthService with ChangeNotifier {
     required String verificationId,
     required String smsCode,
   }) async {
-    if (Platform.isLinux) return _mockUser();
+    if (Platform.isLinux) {
+      throw Exception('Firebase Auth n\'est pas disponible sur Linux. Veuillez utiliser une autre plateforme.');
+    }
 
     try {
       final credential = fb_auth.PhoneAuthProvider.credential(
@@ -198,16 +214,6 @@ class AuthService with ChangeNotifier {
     return _user!;
   }
 
-  AppUser _mockUser() {
-    _user = AppUser(
-      uid: 'mock_uid_linux',
-      email: 'mockuser@linux.dev',
-      displayName: 'Mock User',
-    );
-    notifyListeners();
-    return _user!;
-  }
-
   Future<void> signOut() async {
     if (!Platform.isLinux) {
       await _googleSignIn?.signOut();
@@ -219,12 +225,12 @@ class AuthService with ChangeNotifier {
 
   Future<void> checkAuthentication() async {
     if (Platform.isLinux) {
-      _user = AppUser(
-        uid: 'mock_uid_linux',
-        email: 'mockuser@linux.dev',
-        displayName: 'Mock User',
-      );
-      notifyListeners();
+      // Sur Linux, on n'a pas d'utilisateur connecté par défaut
+      _user = null;
+      // Utiliser WidgetsBinding pour différer la notification
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
       return;
     }
 
@@ -241,11 +247,16 @@ class AuthService with ChangeNotifier {
       } else {
         _user = null;
       }
-      notifyListeners();
+      // Utiliser WidgetsBinding pour différer la notification
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     } catch (e) {
       debugPrint('Erreur vérification auth: $e');
       _user = null;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 

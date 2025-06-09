@@ -123,12 +123,29 @@ class Conversation {
 class ConversationProvider with ChangeNotifier {
   List<Conversation> _conversations = [];
   Conversation? _currentConversation;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore? _firestore;
   String? _userId;
   StreamSubscription? _conversationsSubscription;
+  bool _useFirestore;
 
   List<Conversation> get conversations => _conversations;
   Conversation? get currentConversation => _currentConversation;
+
+  // Constructeur principal
+  ConversationProvider({bool useFirestore = true}) : _useFirestore = useFirestore {
+    if (useFirestore) {
+      _firestore = FirebaseFirestore.instance;
+    } else {
+      _firestore = null;
+    }
+    _conversations = [];
+    _currentConversation = null;
+  }
+
+  // Méthode factory pour créer une instance sans Firestore
+  factory ConversationProvider.withoutFirestore() {
+    return ConversationProvider(useFirestore: false);
+  }
 
   void setUserId(String? userId) {
     if (_userId == userId) return;
@@ -136,7 +153,7 @@ class ConversationProvider with ChangeNotifier {
     _userId = userId;
     _conversationsSubscription?.cancel();
 
-    if (userId != null) {
+    if (userId != null && _useFirestore) {
       _subscribeToConversations();
     } else {
       _conversations = [];
@@ -146,9 +163,9 @@ class ConversationProvider with ChangeNotifier {
   }
 
   void _subscribeToConversations() {
-    if (_userId == null || _userId!.isEmpty) return;
+    if (_userId == null || _userId!.isEmpty || _firestore == null) return;
 
-    _conversationsSubscription = _firestore
+    _conversationsSubscription = _firestore!
         .collection('conversations')
         .where('userId', isEqualTo: _userId)
         .orderBy('updatedAt', descending: true)
@@ -158,7 +175,6 @@ class ConversationProvider with ChangeNotifier {
           .map((doc) => Conversation.fromFirestore(doc))
           .toList();
 
-      // Load messages for current conversation if it exists
       if (_currentConversation != null) {
         final currentId = _currentConversation!.id;
         _currentConversation = _conversations.firstWhere(
@@ -173,8 +189,10 @@ class ConversationProvider with ChangeNotifier {
   }
 
   Future<void> _loadMessages(Conversation conversation) async {
+    if (_firestore == null) return;
+
     try {
-      final messagesSnapshot = await _firestore
+      final messagesSnapshot = await _firestore!
           .collection('conversations')
           .doc(conversation.id)
           .collection('messages')
@@ -195,7 +213,9 @@ class ConversationProvider with ChangeNotifier {
       userId: _userId,
     );
 
-    await _saveConversation(newConversation);
+    if (_useFirestore && _firestore != null) {
+      await _saveConversation(newConversation);
+    }
 
     _conversations.insert(0, newConversation);
     _currentConversation = newConversation;
@@ -204,27 +224,36 @@ class ConversationProvider with ChangeNotifier {
 
   Future<void> selectConversation(String id) async {
     _currentConversation = _conversations.firstWhere((conv) => conv.id == id);
-    await _loadMessages(_currentConversation!);
+    if (_useFirestore) {
+      await _loadMessages(_currentConversation!);
+    }
     notifyListeners();
   }
 
   Future<void> deleteConversation(String id) async {
+    if (!_useFirestore || _firestore == null) {
+      _conversations.removeWhere((conv) => conv.id == id);
+      if (_currentConversation?.id == id) {
+        _currentConversation = null;
+      }
+      notifyListeners();
+      return;
+    }
+
     try {
-      // Delete messages first
-      final messages = await _firestore
+      final messages = await _firestore!
           .collection('conversations')
           .doc(id)
           .collection('messages')
           .get();
 
-      final batch = _firestore.batch();
+      final batch = _firestore!.batch();
       for (var doc in messages.docs) {
         batch.delete(doc.reference);
       }
       await batch.commit();
 
-      // Then delete conversation
-      await _firestore.collection('conversations').doc(id).delete();
+      await _firestore!.collection('conversations').doc(id).delete();
 
       _conversations.removeWhere((conv) => conv.id == id);
       if (_currentConversation?.id == id) {
@@ -245,18 +274,19 @@ class ConversationProvider with ChangeNotifier {
     final message = Message(content: content, isUser: isUser);
     _currentConversation!.addMessage(message);
 
-    await _firestore
-        .collection('conversations')
-        .doc(_currentConversation!.id)
-        .collection('messages')
-        .doc(message.id)
-        .set(message.toFirestore());
+    if (_useFirestore && _firestore != null) {
+      await _firestore!
+          .collection('conversations')
+          .doc(_currentConversation!.id)
+          .collection('messages')
+          .doc(message.id)
+          .set(message.toFirestore());
 
-    // Update conversation timestamp
-    await _firestore
-        .collection('conversations')
-        .doc(_currentConversation!.id)
-        .update({'updatedAt': FieldValue.serverTimestamp()});
+      await _firestore!
+          .collection('conversations')
+          .doc(_currentConversation!.id)
+          .update({'updatedAt': FieldValue.serverTimestamp()});
+    }
 
     notifyListeners();
   }
@@ -265,20 +295,24 @@ class ConversationProvider with ChangeNotifier {
     final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
     conversation.updateTitle(newTitle);
 
-    await _firestore
-        .collection('conversations')
-        .doc(conversationId)
-        .update({
-      'title': newTitle,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    if (_useFirestore && _firestore != null) {
+      await _firestore!
+          .collection('conversations')
+          .doc(conversationId)
+          .update({
+        'title': newTitle,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
 
     notifyListeners();
   }
 
   Future<void> _saveConversation(Conversation conversation) async {
+    if (!_useFirestore || _firestore == null) return;
+
     try {
-      await _firestore
+      await _firestore!
           .collection('conversations')
           .doc(conversation.id)
           .set(conversation.toFirestore());
@@ -297,17 +331,19 @@ class ConversationProvider with ChangeNotifier {
     if (messageIndex >= 0 && messageIndex < conversation.messages.length) {
       conversation.messages[messageIndex].content = newContent;
 
-      await _firestore
-          .collection('conversations')
-          .doc(conversationId)
-          .collection('messages')
-          .doc(conversation.messages[messageIndex].id)
-          .update({'content': newContent});
+      if (_useFirestore && _firestore != null) {
+        await _firestore!
+            .collection('conversations')
+            .doc(conversationId)
+            .collection('messages')
+            .doc(conversation.messages[messageIndex].id)
+            .update({'content': newContent});
 
-      await _firestore
-          .collection('conversations')
-          .doc(conversationId)
-          .update({'updatedAt': FieldValue.serverTimestamp()});
+        await _firestore!
+            .collection('conversations')
+            .doc(conversationId)
+            .update({'updatedAt': FieldValue.serverTimestamp()});
+      }
 
       notifyListeners();
     }
@@ -325,36 +361,36 @@ class ConversationProvider with ChangeNotifier {
       if (message.isUser) {
         message.addVersion(newContent, aiResponse);
 
-        // Update message in Firestore
-        await _firestore
-            .collection('conversations')
-            .doc(conversationId)
-            .collection('messages')
-            .doc(message.id)
-            .update({
-          'versions': message.versions,
-          'aiResponses': message.aiResponses,
-          'currentVersionIndex': message.currentVersionIndex,
-        });
+        if (_useFirestore && _firestore != null) {
+          await _firestore!
+              .collection('conversations')
+              .doc(conversationId)
+              .collection('messages')
+              .doc(message.id)
+              .update({
+            'versions': message.versions,
+            'aiResponses': message.aiResponses,
+            'currentVersionIndex': message.currentVersionIndex,
+          });
 
-        // Add AI response
-        final responseMessage = Message(
-          content: aiResponse,
-          isUser: false,
-        );
-        conversation.messages.insert(messageIndex + 1, responseMessage);
+          final responseMessage = Message(
+            content: aiResponse,
+            isUser: false,
+          );
+          conversation.messages.insert(messageIndex + 1, responseMessage);
 
-        await _firestore
-            .collection('conversations')
-            .doc(conversationId)
-            .collection('messages')
-            .doc(responseMessage.id)
-            .set(responseMessage.toFirestore());
+          await _firestore!
+              .collection('conversations')
+              .doc(conversationId)
+              .collection('messages')
+              .doc(responseMessage.id)
+              .set(responseMessage.toFirestore());
 
-        await _firestore
-            .collection('conversations')
-            .doc(conversationId)
-            .update({'updatedAt': FieldValue.serverTimestamp()});
+          await _firestore!
+              .collection('conversations')
+              .doc(conversationId)
+              .update({'updatedAt': FieldValue.serverTimestamp()});
+        }
 
         notifyListeners();
       }
@@ -367,15 +403,17 @@ class ConversationProvider with ChangeNotifier {
         if (msg.id == messageId && msg.isUser) {
           msg.setVersion(versionIndex);
 
-          _firestore
-              .collection('conversations')
-              .doc(conv.id)
-              .collection('messages')
-              .doc(msg.id)
-              .update({
-            'currentVersionIndex': versionIndex,
-            'content': msg.versions[versionIndex],
-          });
+          if (_useFirestore && _firestore != null) {
+            _firestore!
+                .collection('conversations')
+                .doc(conv.id)
+                .collection('messages')
+                .doc(msg.id)
+                .update({
+              'currentVersionIndex': versionIndex,
+              'content': msg.versions[versionIndex],
+            });
+          }
 
           notifyListeners();
           return;

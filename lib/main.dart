@@ -24,7 +24,13 @@ Future<void> main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
-        ChangeNotifierProvider(create: (_) => ConversationProvider()),
+        // Créer ConversationProvider de manière lazy pour éviter l'erreur au démarrage
+        ChangeNotifierProvider(
+          create: (_) => Platform.isLinux ?
+          ConversationProvider.withoutFirestore() :
+          ConversationProvider(),
+          lazy: true,
+        ),
         StreamProvider<List<ConnectivityResult>>(
           create: (_) => Connectivity().onConnectivityChanged,
           initialData: [ConnectivityResult.none],
@@ -51,9 +57,13 @@ Future<void> _initializeFirebase() async {
     } else if (!Platform.isLinux) {
       await Firebase.initializeApp();
     }
+    debugPrint('Firebase initialized successfully');
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
-    // Vous pourriez vouloir afficher une interface utilisateur d'erreur ici
+    if (!Platform.isLinux) {
+      // Seulement lancer l'erreur si ce n'est pas Linux
+      rethrow;
+    }
   }
 }
 
@@ -84,33 +94,8 @@ class WodhAIApp extends StatelessWidget {
         '/auth': (context) => const AuthWrapper(),
         '/home': (context) => const ConnectivityWrapper(child: HomeScreen()),
       },
-      // Correction : Conditionner le StreamBuilder seulement si Firebase est disponible
-      builder: (context, child) {
-        // Sur Linux, on n'utilise pas Firebase, donc on retourne directement l'enfant
-        if (Platform.isLinux) {
-          return child!;
-        }
-
-        return StreamBuilder<fb_auth.User?>(
-          stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            // Gérer les erreurs d'authentification ici si nécessaire
-            if (snapshot.hasError) {
-              return Scaffold(
-                body: Center(
-                  child: Text('Erreur d\'authentification: ${snapshot.error}'),
-                ),
-              );
-            }
-
-            return child!;
-          },
-        );
-      },
+      // Supprimer le StreamBuilder qui causait des problèmes
+      builder: (context, child) => child!,
     );
   }
 }
@@ -122,6 +107,13 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthService>(
       builder: (context, authService, _) {
+        // Attendre que l'AuthService soit initialisé
+        if (!authService.isInitialized) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
         if (authService.isAuthenticated) {
           return const ConnectivityWrapper(child: HomeScreen());
         }
@@ -147,7 +139,9 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
   @override
   void initState() {
     super.initState();
-    _checkInitialConnection();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkInitialConnection();
+    });
   }
 
   @override
@@ -166,15 +160,19 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
         results.any((result) => result != ConnectivityResult.none);
 
     if (isConnected != _isConnected) {
-      setState(() {
-        _isConnected = isConnected;
-        _showConnectionBanner = true;
-      });
-
-      _connectionBannerTimer?.cancel();
-      _connectionBannerTimer = Timer(const Duration(seconds: 3), () {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          setState(() => _showConnectionBanner = false);
+          setState(() {
+            _isConnected = isConnected;
+            _showConnectionBanner = true;
+          });
+
+          _connectionBannerTimer?.cancel();
+          _connectionBannerTimer = Timer(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() => _showConnectionBanner = false);
+            }
+          });
         }
       });
     }
@@ -184,7 +182,10 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
   Widget build(BuildContext context) {
     return Consumer<List<ConnectivityResult>>(
       builder: (context, connectivityResults, child) {
-        _updateConnectionStatus(connectivityResults);
+        // Différer la mise à jour du statut de connexion
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _updateConnectionStatus(connectivityResults);
+        });
 
         return Scaffold(
           body: Stack(
