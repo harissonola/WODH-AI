@@ -40,6 +40,7 @@ dependencies:
   cloud_firestore: ^5.6.8
   firebase_auth: ^5.5.4
   google_sign_in: ^6.1.5
+  msal_auth: ^3.1.4
   flutter_facebook_auth: ^7.1.2
   uuid: ^4.5.1
   intl: ^0.20.2
@@ -86,6 +87,7 @@ flutter:
   assets:
      - assets/logo.png
      - assets/google_logo.png
+     - assets/microsoft_logo.png
 
 
 flutter_icons:

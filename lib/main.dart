@@ -54,16 +54,19 @@ Future<void> _initializeFirebase() async {
           appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
         ),
       );
-    } else if (!Platform.isLinux) {
-      await Firebase.initializeApp();
+    } else {
+      // Tentative d'initialisation même sur Linux
+      try {
+        await Firebase.initializeApp();
+      } catch (e) {
+        debugPrint('Firebase initialization fallback: $e');
+        // On continue même si l'initialisation échoue (pour Linux)
+      }
     }
     debugPrint('Firebase initialized successfully');
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
-    if (!Platform.isLinux) {
-      // Seulement lancer l'erreur si ce n'est pas Linux
-      rethrow;
-    }
+    // Ne pas bloquer l'application même en cas d'erreur
   }
 }
 
