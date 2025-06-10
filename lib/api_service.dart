@@ -12,9 +12,14 @@ class ApiService {
   final String? _userId;
   final String? _linuxAuthToken;
 
-  ApiService(User user, {String? userId, String? linuxAuthToken})
+  ApiService({User? user, String? userId, String? linuxAuthToken})
       : _userId = userId,
-        _linuxAuthToken = linuxAuthToken;
+        _linuxAuthToken = linuxAuthToken {
+    if (!Platform.isLinux && user == null) {
+      throw ArgumentError("User must be provided for non-Linux platforms");
+    }
+  }
+
 
   Future<Map<String, String>> _getHeaders() async {
     final headers = {

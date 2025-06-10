@@ -71,16 +71,21 @@ class AuthService with ChangeNotifier {
   Future<void> _initializeAuth() async {
     try {
       if (Platform.isLinux) {
-        // Mode Linux - Utiliser l'API REST directement
+        // Mode Linux - Pas besoin de Firebase
         _isInitialized = true;
         notifyListeners();
-      } else {
+        return;
+      }
+
+      // Initialiser Firebase Auth seulement si nécessaire
+      if (_auth == null) {
         _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
         _auth = fb_auth.FirebaseAuth.instance;
         _authStateSubscription = _auth!.authStateChanges().listen(_onAuthStateChanged);
-        _isInitialized = true;
-        notifyListeners();
       }
+
+      _isInitialized = true;
+      notifyListeners();
     } catch (e) {
       debugPrint('Auth initialization error: $e');
       _isInitialized = true;

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Message {
   final String id;
@@ -142,10 +143,13 @@ class ConversationProvider with ChangeNotifier {
 
     _userId = userId;
     if (userId != null) {
-      // Obtenez l'utilisateur Firebase actuel
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        _apiService = ApiService(user, userId: userId, linuxAuthToken: linuxAuthToken);
+        _apiService = ApiService(
+            user: user,
+            userId: userId,
+            linuxAuthToken: linuxAuthToken
+        );
         _loadConversations();
       }
     } else {
@@ -156,9 +160,27 @@ class ConversationProvider with ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    if (Platform.isLinux) {
+      // Sur Linux, on utilise juste l'API avec le token
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('linux_token');
+      final userId = prefs.getString('user_id');
+
+      if (token != null && userId != null) {
+        _apiService = ApiService(
+            userId: userId,
+            linuxAuthToken: token
+        );
+        _userId = userId;
+        await _loadConversations();
+      }
+      return;
+    }
+
+    // Pour les autres plateformes, utiliser Firebase normalement
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      _apiService = ApiService(user);
+      _apiService = ApiService(user: user);
       _userId = user.uid;
       await _loadConversations();
     }

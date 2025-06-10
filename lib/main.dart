@@ -17,8 +17,13 @@ import 'models/conversation.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialiser Firebase uniquement si ce n'est pas Linux
   if (!Platform.isLinux) {
-    await Firebase.initializeApp();
+    try {
+      await Firebase.initializeApp();
+    } catch (e) {
+      debugPrint("Firebase initialization error: $e");
+    }
   }
 
   runApp(

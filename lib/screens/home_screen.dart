@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -232,19 +234,22 @@ class HomeScreen extends StatelessWidget {
         onPressed: () async {
           try {
             final provider = Provider.of<ConversationProvider>(context, listen: false);
-            await provider.initialize(); // Initialisation explicite
+
+            if (Platform.isLinux) {
+              // Pour Linux, vérifier qu'on a un token
+              final auth = Provider.of<AuthService>(context, listen: false);
+              if (auth.linuxAuthToken != null) {
+                provider.setUserId(auth.currentUser?.uid, linuxAuthToken: auth.linuxAuthToken);
+              }
+            }
+
             await provider.createNewConversation();
             Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
           } catch (e) {
-            if (kDebugMode) {
-              print('Erreur: ${e.toString()}');
-            }
+            debugPrint('Erreur: ${e.toString()}');
             ScaffoldMessenger.of(context).showSnackBar(
-
               SnackBar(content: Text('Erreur: ${e.toString()}')),
-
             );
-
           }
         },
       ),
