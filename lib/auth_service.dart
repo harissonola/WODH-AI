@@ -67,15 +67,20 @@ class AuthService with ChangeNotifier {
     _initializeAuth();
   }
 
+  // Dans la méthode _initializeAuth()
   Future<void> _initializeAuth() async {
     try {
-      if (!Platform.isLinux) {
+      if (Platform.isLinux) {
+        // Mode Linux - Utiliser l'API REST directement
+        _isInitialized = true;
+        notifyListeners();
+      } else {
         _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
         _auth = fb_auth.FirebaseAuth.instance;
         _authStateSubscription = _auth!.authStateChanges().listen(_onAuthStateChanged);
+        _isInitialized = true;
+        notifyListeners();
       }
-      _isInitialized = true;
-      notifyListeners();
     } catch (e) {
       debugPrint('Auth initialization error: $e');
       _isInitialized = true;
@@ -85,7 +90,8 @@ class AuthService with ChangeNotifier {
 
   // Gestionnaire des changements d'état d'authentification
   void _onAuthStateChanged(fb_auth.User? user) {
-    final conversationProvider = Provider.of<ConversationProvider>(context as BuildContext, listen: false);
+    // Ne pas utiliser Provider.of ici, car nous n'avons pas accès au BuildContext
+    // dans un service qui n'est pas un Widget
 
     if (user != null) {
       _user = AppUser(
@@ -95,12 +101,8 @@ class AuthService with ChangeNotifier {
         phoneNumber: user.phoneNumber,
         photoURL: user.photoURL,
       );
-
-      // Synchroniser les conversations avec le nouvel utilisateur
-      conversationProvider.setUserId(user.uid);
     } else {
       _user = null;
-      conversationProvider.setUserId(null);
     }
     notifyListeners();
   }
@@ -121,7 +123,13 @@ class AuthService with ChangeNotifier {
   // ==================== EMAIL/PASSWORD AUTHENTICATION ====================
 
   // Email/Password - Version pour Linux (REST API)
-  Future<AppUser?> _signInWithEmailAndPasswordLinux(String email, String password) async {
+  String? _linuxAuthToken;
+
+  Future<AppUser?> _signInWithEmailAndPasswordLinux(
+      String email,
+      String password, {
+        ConversationProvider? conversationProvider,
+      }) async {
     try {
       final response = await http.post(
         Uri.parse('$_firebaseAuthUrl:signInWithPassword?key=$_firebaseApiKey'),
@@ -138,12 +146,20 @@ class AuthService with ChangeNotifier {
         throw Exception(data['error']['message'] ?? 'Échec de la connexion');
       }
 
+      _linuxAuthToken = data['idToken']; // Stocker le token
+
+      // Mettre à jour le ConversationProvider si fourni
+      conversationProvider?.setUserId(data['localId'], linuxAuthToken: _linuxAuthToken);
+
       return _createAppUserFromMap(data);
     } catch (e) {
       debugPrint('Linux SignIn Error: $e');
       rethrow;
     }
   }
+
+  // Ajouter une méthode pour obtenir le token Linux
+  String? get linuxAuthToken => _linuxAuthToken;
 
   // Email/Password - Version native
   Future<AppUser?> _signInWithEmailAndPasswordNative(String email, String password) async {
@@ -165,9 +181,15 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  Future<AppUser?> signInWithEmailAndPassword(String email, String password) async {
+  Future<AppUser?> signInWithEmailAndPassword(
+      String email,
+      String password, {
+        ConversationProvider? conversationProvider,
+      }) async {
     return Platform.isLinux
-        ? await _signInWithEmailAndPasswordLinux(email, password)
+        ? await _signInWithEmailAndPasswordLinux(
+        email, password,
+        conversationProvider: conversationProvider)
         : await _signInWithEmailAndPasswordNative(email, password);
   }
 

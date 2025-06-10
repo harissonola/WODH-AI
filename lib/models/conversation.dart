@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -136,16 +137,20 @@ class ConversationProvider with ChangeNotifier {
     _isInitialized = true;
   }
 
-  void setUserId(String? userId) {
+  void setUserId(String? userId, {String? linuxAuthToken}) {
     if (_userId == userId) return;
 
     _userId = userId;
     if (userId != null) {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {  // Ajoutez cette vérification
-        _apiService = ApiService(currentUser);
-        _loadConversations();
+      if (Platform.isLinux) {
+        _apiService = ApiService(null, linuxAuthToken: linuxAuthToken);
+      } else {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          _apiService = ApiService(currentUser);
+        }
       }
+      _loadConversations();
     } else {
       _conversations = [];
       _currentConversation = null;

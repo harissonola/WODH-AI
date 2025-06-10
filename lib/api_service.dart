@@ -1,13 +1,30 @@
 // api_service.dart
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 
 class ApiService {
   static const String _baseUrl = 'http://192.168.1.101:8000/api/conversations';
   final fb_auth.User? user;
+  final String? linuxAuthToken; // Ajout pour Linux
 
-  ApiService(this.user);
+  ApiService(this.user, {this.linuxAuthToken});
+
+  Future<Map<String, String>> _getHeaders() async {
+    if (Platform.isLinux && linuxAuthToken != null) {
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $linuxAuthToken',
+      };
+    }
+
+    final token = await user?.getIdToken();
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+  }
 
   Future<dynamic> _handleResponse(http.Response response) async {
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -27,14 +44,6 @@ class ApiService {
     } catch (e) {
       throw Exception('Failed to connect to API: $e');
     }
-  }
-
-  Future<Map<String, String>> _getHeaders() async {
-    final token = await user?.getIdToken();
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
   }
 
   Future<Future> getConversations() async {  // Modifiez cette ligne
