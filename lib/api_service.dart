@@ -1,29 +1,42 @@
-// api_service.dart
 import 'dart:convert';
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String _baseUrl = 'http://192.168.1.101:8000/api/conversations';
-  final fb_auth.User? user;
-  final String? linuxAuthToken; // Ajout pour Linux
+  static const String _linuxTokenKey = 'linux_token';
+  static const String _userIdKey = 'user_id';
 
-  ApiService(this.user, {this.linuxAuthToken});
+  final String? _userId;
+  final String? _linuxAuthToken;
+
+  ApiService(User user, {String? userId, String? linuxAuthToken})
+      : _userId = userId,
+        _linuxAuthToken = linuxAuthToken;
 
   Future<Map<String, String>> _getHeaders() async {
-    if (Platform.isLinux && linuxAuthToken != null) {
-      return {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $linuxAuthToken',
-      };
+    final headers = {
+      'Content-Type': 'application/json',
+    };
+
+    // Si on est sur Linux et qu'on a un token
+    if (Platform.isLinux && _linuxAuthToken != null) {
+      headers['Authorization'] = 'Bearer $_linuxAuthToken';
+    }
+    // Sinon, vérifier s'il y a un token dans les préférences partagées
+    else {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_linuxTokenKey);
+      final userId = prefs.getString(_userIdKey);
+
+      if (token != null && userId != null) {
+        headers['Authorization'] = 'Bearer $token';
+      }
     }
 
-    final token = await user?.getIdToken();
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
+    return headers;
   }
 
   Future<dynamic> _handleResponse(http.Response response) async {
@@ -35,27 +48,13 @@ class ApiService {
     }
   }
 
-  Future<void> _checkConnectivity() async {
-    try {
-      final response = await http.get(Uri.parse(_baseUrl), headers: await _getHeaders());
-      if (response.statusCode != 200) {
-        throw Exception('API unavailable');
-      }
-    } catch (e) {
-      throw Exception('Failed to connect to API: $e');
-    }
-  }
-
-  Future<Future> getConversations() async {  // Modifiez cette ligne
-    await _checkConnectivity();
+  Future<dynamic> getConversations() async {
     final headers = await _getHeaders();
     final response = await http.get(Uri.parse(_baseUrl), headers: headers);
     return _handleResponse(response);
   }
 
-// Ajoutez cette nouvelle méthode pour récupérer une conversation spécifique
   Future<dynamic> getConversation(String id) async {
-    await _checkConnectivity();
     final headers = await _getHeaders();
     final response = await http.get(
       Uri.parse('$_baseUrl/$id'),

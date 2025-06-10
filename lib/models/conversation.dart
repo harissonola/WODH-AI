@@ -142,15 +142,12 @@ class ConversationProvider with ChangeNotifier {
 
     _userId = userId;
     if (userId != null) {
-      if (Platform.isLinux) {
-        _apiService = ApiService(null, linuxAuthToken: linuxAuthToken);
-      } else {
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser != null) {
-          _apiService = ApiService(currentUser);
-        }
+      // Obtenez l'utilisateur Firebase actuel
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        _apiService = ApiService(user, userId: userId, linuxAuthToken: linuxAuthToken);
+        _loadConversations();
       }
-      _loadConversations();
     } else {
       _conversations = [];
       _currentConversation = null;

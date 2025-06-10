@@ -149,7 +149,12 @@ class AuthService with ChangeNotifier {
       _linuxAuthToken = data['idToken']; // Stocker le token
 
       // Mettre à jour le ConversationProvider si fourni
-      conversationProvider?.setUserId(data['localId'], linuxAuthToken: _linuxAuthToken);
+      if (conversationProvider != null) {
+        final user = fb_auth.FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          conversationProvider.setUserId(data['localId'], linuxAuthToken: _linuxAuthToken);
+        }
+      }
 
       return _createAppUserFromMap(data);
     } catch (e) {
