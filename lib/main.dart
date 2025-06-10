@@ -1,12 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wodh_ai/screens/auth_screen.dart';
@@ -18,20 +15,11 @@ import 'models/conversation.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await _initializeFirebase();
-
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
-        // Créer ConversationProvider de manière lazy pour éviter l'erreur au démarrage
-        ChangeNotifierProvider(
-          create: (_) => Platform.isLinux ?
-          ConversationProvider.withoutFirestore() :
-          ConversationProvider(),
-          lazy: true,
-        ),
+        ChangeNotifierProvider(create: (_) => ConversationProvider()),
         StreamProvider<List<ConnectivityResult>>(
           create: (_) => Connectivity().onConnectivityChanged,
           initialData: [ConnectivityResult.none],
@@ -40,38 +28,6 @@ Future<void> main() async {
       child: const WodhAIApp(),
     ),
   );
-}
-
-Future<void> _initializeFirebase() async {
-  try {
-    if (kIsWeb) {
-      await Firebase.initializeApp(
-        options: const FirebaseOptions(
-          apiKey: "AIzaSyCjb85UwE7nrp2ENO-1TRZoBK6q6rdxb2s",
-          authDomain: "wodh-ai.firebaseapp.com",
-          projectId: "wodh-ai",
-          storageBucket: "wodh-ai.appspot.com",
-          messagingSenderId: "36323799698",
-          appId: "1:36323799698:web:3f895dec9b1e82e1e8ec4b",
-        ),
-      );
-    } else {
-      try {
-        await Firebase.initializeApp();
-
-        // Activer la persistance même sur Linux
-        if (Platform.isLinux) {
-          await FirebaseFirestore.instance.enablePersistence(
-              PersistenceSettings(synchronizeTabs: true)
-          );
-        }
-      } catch (e) {
-        debugPrint('Firebase initialization fallback: $e');
-      }
-    }
-  } catch (e) {
-    debugPrint('Firebase initialization error: $e');
-  }
 }
 
 class WodhAIApp extends StatelessWidget {
@@ -101,7 +57,6 @@ class WodhAIApp extends StatelessWidget {
         '/auth': (context) => const AuthWrapper(),
         '/home': (context) => const ConnectivityWrapper(child: HomeScreen()),
       },
-      // Supprimer le StreamBuilder qui causait des problèmes
       builder: (context, child) => child!,
     );
   }
@@ -114,7 +69,6 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthService>(
       builder: (context, authService, _) {
-        // Attendre que l'AuthService soit initialisé
         if (!authService.isInitialized) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -189,7 +143,6 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
   Widget build(BuildContext context) {
     return Consumer<List<ConnectivityResult>>(
       builder: (context, connectivityResults, child) {
-        // Différer la mise à jour du statut de connexion
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _updateConnectionStatus(connectivityResults);
         });
