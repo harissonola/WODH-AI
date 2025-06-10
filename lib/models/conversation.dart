@@ -141,8 +141,11 @@ class ConversationProvider with ChangeNotifier {
 
     _userId = userId;
     if (userId != null) {
-      _apiService = ApiService(FirebaseAuth.instance.currentUser);
-      _loadConversations();
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {  // Ajoutez cette vérification
+        _apiService = ApiService(currentUser);
+        _loadConversations();
+      }
     } else {
       _conversations = [];
       _currentConversation = null;
@@ -150,57 +153,74 @@ class ConversationProvider with ChangeNotifier {
     }
   }
 
+  Future<void> initialize() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _apiService = ApiService(user);
+      _userId = user.uid;
+      await _loadConversations();
+    }
+  }
+
   Future<void> _loadConversations() async {
     try {
-      if (_apiService == null) return;
+      if (_apiService == null) {
+        await initialize();
+        if (_apiService == null) return;
+      }
 
       final response = await _apiService!.getConversations();
-      _conversations = response.map((json) => Conversation.fromJson(json)).toList();
+      _conversations = (response as List).map((json) => Conversation.fromJson(json)).toList();
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading conversations: $e');
+      rethrow;
     }
   }
 
   Future<void> createNewConversation([String title = 'Nouvelle conversation']) async {
-    final newConversation = Conversation(
-      title: title,
-      userId: _userId,
-    );
-
     try {
-      if (_apiService != null) {
-        await _apiService!.createConversation(title);
+      if (_apiService == null) {
+        await initialize();
+        if (_apiService == null) throw Exception('User not authenticated');
       }
+
+      final response = await _apiService!.createConversation(title);
+      final newConversation = Conversation.fromJson(response);
+
+      _conversations.insert(0, newConversation);
+      _currentConversation = newConversation;
+      notifyListeners();
     } catch (e) {
       debugPrint('Error creating conversation: $e');
+      rethrow;
     }
-
-    _conversations.insert(0, newConversation);
-    _currentConversation = newConversation;
-    notifyListeners();
   }
 
   Future<void> selectConversation(String id) async {
     try {
-      if (_apiService != null) {
-        final response = await _apiService!.getConversation(id);
-        _currentConversation = Conversation.fromJson(response);
-      } else {
-        _currentConversation = _conversations.firstWhere((conv) => conv.id == id);
+      if (_apiService == null) {
+        await initialize();
+        if (_apiService == null) throw Exception('User not authenticated');
       }
+
+      final response = await _apiService!.getConversation(id);
+      _currentConversation = Conversation.fromJson(response);
       notifyListeners();
     } catch (e) {
       debugPrint('Error selecting conversation: $e');
+      rethrow;
     }
   }
 
   Future<void> deleteConversation(String id) async {
     try {
-      if (_apiService != null) {
-        await _apiService!.deleteConversation(id);
+      if (_apiService == null) {
+        await initialize();
+        if (_apiService == null) throw Exception('User not authenticated');
       }
 
+      await _apiService!.deleteConversation(id);
       _conversations.removeWhere((conv) => conv.id == id);
       if (_currentConversation?.id == id) {
         _currentConversation = null;
@@ -213,42 +233,49 @@ class ConversationProvider with ChangeNotifier {
   }
 
   Future<void> addMessageToCurrent(String content, bool isUser) async {
-    if (_currentConversation == null) {
-      await createNewConversation();
-    }
-
-    final message = Message(content: content, isUser: isUser);
-    _currentConversation!.addMessage(message);
-
     try {
-      if (_apiService != null) {
-        await _apiService!.addMessage(_currentConversation!.id, content, isUser);
-        await _apiService!.updateConversation(
-          _currentConversation!.id,
-          _currentConversation!.title,
-        );
+      if (_currentConversation == null) {
+        await createNewConversation();
       }
-    } catch (e) {
-      debugPrint('Error saving message: $e');
-    }
 
-    notifyListeners();
+      if (_apiService == null) {
+        await initialize();
+        if (_apiService == null) throw Exception('User not authenticated');
+      }
+
+      final response = await _apiService!.addMessage(
+          _currentConversation!.id,
+          content,
+          isUser
+      );
+
+      final message = Message.fromJson(response);
+      _currentConversation!.addMessage(message);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error adding message: $e');
+      rethrow;
+    }
   }
 
   Future<void> updateConversationTitle(String conversationId, String newTitle) async {
-    final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
-    conversation.updateTitle(newTitle);
-
     try {
-      if (_apiService != null) {
-        await _apiService!.updateConversation(conversationId, newTitle);
+      final conversation = _conversations.firstWhere((conv) => conv.id == conversationId);
+      conversation.updateTitle(newTitle);
+
+      if (_apiService == null) {
+        await initialize();
+        if (_apiService == null) throw Exception('User not authenticated');
       }
+
+      await _apiService!.updateConversation(conversationId, newTitle);
+      notifyListeners();
     } catch (e) {
       debugPrint('Error updating conversation title: $e');
+      rethrow;
     }
-
-    notifyListeners();
   }
+
 
   Future<void> editMessage(
       String conversationId,

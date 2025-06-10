@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth_service.dart';
@@ -230,19 +231,20 @@ class HomeScreen extends StatelessWidget {
         ),
         onPressed: () async {
           try {
-            await Provider.of<ConversationProvider>(context, listen: false)
-                .createNewConversation();
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ChatScreen()),
-            );
+            final provider = Provider.of<ConversationProvider>(context, listen: false);
+            await provider.initialize(); // Initialisation explicite
+            await provider.createNewConversation();
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
           } catch (e) {
+            if (kDebugMode) {
+              print('Erreur: ${e.toString()}');
+            }
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Erreur lors de la création: $e'),
-                backgroundColor: Colors.red,
-              ),
+
+              SnackBar(content: Text('Erreur: ${e.toString()}')),
+
             );
+
           }
         },
       ),
