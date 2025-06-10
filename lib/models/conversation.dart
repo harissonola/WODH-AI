@@ -131,6 +131,8 @@ class ConversationProvider with ChangeNotifier {
   List<Conversation> get conversations => _conversations;
   Conversation? get currentConversation => _currentConversation;
 
+
+
   // Constructeur principal
   ConversationProvider({bool useFirestore = true}) : _useFirestore = useFirestore {
     if (useFirestore) {
@@ -140,6 +142,36 @@ class ConversationProvider with ChangeNotifier {
     }
     _conversations = [];
     _currentConversation = null;
+  }
+
+  Future<void> syncLocalConversations() async {
+    if (_userId == null || _firestore == null) return;
+
+    try {
+      // Récupérer toutes les conversations du serveur
+      final serverSnapshot = await _firestore!
+          .collection('conversations')
+          .where('userId', isEqualTo: _userId)
+          .get();
+
+      // Fusionner avec les conversations locales
+      for (final serverDoc in serverSnapshot.docs) {
+        final serverConv = Conversation.fromFirestore(serverDoc);
+        final localIndex = _conversations.indexWhere((c) => c.id == serverConv.id);
+
+        if (localIndex >= 0) {
+          // Mettre à jour la conversation locale avec les données du serveur
+          _conversations[localIndex] = serverConv;
+        } else {
+          // Ajouter la conversation du serveur
+          _conversations.add(serverConv);
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erreur synchronisation: $e');
+    }
   }
 
   // Méthode factory pour créer une instance sans Firestore
@@ -213,14 +245,24 @@ class ConversationProvider with ChangeNotifier {
       userId: _userId,
     );
 
-    if (_useFirestore && _firestore != null) {
-      await _saveConversation(newConversation);
+    // Toujours sauvegarder sur Firestore si possible
+    try {
+      if (_firestore != null) {
+        await _firestore!
+            .collection('conversations')
+            .doc(newConversation.id)
+            .set(newConversation.toFirestore());
+      }
+    } catch (e) {
+      debugPrint('Erreur sauvegarde Firestore: $e');
+      // Continuer même en cas d'erreur pour le fonctionnement offline
     }
 
     _conversations.insert(0, newConversation);
     _currentConversation = newConversation;
     notifyListeners();
   }
+
 
   Future<void> selectConversation(String id) async {
     _currentConversation = _conversations.firstWhere((conv) => conv.id == id);
@@ -274,18 +316,26 @@ class ConversationProvider with ChangeNotifier {
     final message = Message(content: content, isUser: isUser);
     _currentConversation!.addMessage(message);
 
-    if (_useFirestore && _firestore != null) {
-      await _firestore!
-          .collection('conversations')
-          .doc(_currentConversation!.id)
-          .collection('messages')
-          .doc(message.id)
-          .set(message.toFirestore());
+    // Toujours essayer de sauvegarder sur Firestore
+    try {
+      if (_firestore != null) {
+        await _firestore!
+            .collection('conversations')
+            .doc(_currentConversation!.id)
+            .collection('messages')
+            .doc(message.id)
+            .set(message.toFirestore());
 
-      await _firestore!
-          .collection('conversations')
-          .doc(_currentConversation!.id)
-          .update({'updatedAt': FieldValue.serverTimestamp()});
+        await _firestore!
+            .collection('conversations')
+            .doc(_currentConversation!.id)
+            .update({
+          'updatedAt': FieldValue.serverTimestamp(),
+          'title': _currentConversation!.title, // Mettre à jour aussi le titre
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur sauvegarde message: $e');
     }
 
     notifyListeners();

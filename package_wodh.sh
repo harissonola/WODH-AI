@@ -33,7 +33,7 @@ Terminal=false' > "$PKG_DIR/usr/share/applications/wodh-ai.desktop"
 
 echo "📝 Fichier de contrôle..."
 echo "Package: wodh-ai
-Version: 1.0.0
+Version: 2.4.0
 Section: utils
 Priority: optional
 Architecture: amd64

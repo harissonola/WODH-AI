@@ -6,7 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart';
 import 'package:provider/provider.dart';
+
+import 'models/conversation.dart';
 
 class AppUser {
   final String uid;
@@ -82,6 +85,8 @@ class AuthService with ChangeNotifier {
 
   // Gestionnaire des changements d'état d'authentification
   void _onAuthStateChanged(fb_auth.User? user) {
+    final conversationProvider = Provider.of<ConversationProvider>(context as BuildContext, listen: false);
+
     if (user != null) {
       _user = AppUser(
         uid: user.uid,
@@ -90,8 +95,12 @@ class AuthService with ChangeNotifier {
         phoneNumber: user.phoneNumber,
         photoURL: user.photoURL,
       );
+
+      // Synchroniser les conversations avec le nouvel utilisateur
+      conversationProvider.setUserId(user.uid);
     } else {
       _user = null;
+      conversationProvider.setUserId(null);
     }
     notifyListeners();
   }

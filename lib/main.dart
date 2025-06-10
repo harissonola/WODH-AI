@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart';
@@ -55,18 +56,21 @@ Future<void> _initializeFirebase() async {
         ),
       );
     } else {
-      // Tentative d'initialisation même sur Linux
       try {
         await Firebase.initializeApp();
+
+        // Activer la persistance même sur Linux
+        if (Platform.isLinux) {
+          await FirebaseFirestore.instance.enablePersistence(
+              PersistenceSettings(synchronizeTabs: true)
+          );
+        }
       } catch (e) {
         debugPrint('Firebase initialization fallback: $e');
-        // On continue même si l'initialisation échoue (pour Linux)
       }
     }
-    debugPrint('Firebase initialized successfully');
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
-    // Ne pas bloquer l'application même en cas d'erreur
   }
 }
 

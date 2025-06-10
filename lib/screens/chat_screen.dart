@@ -583,8 +583,8 @@ class _ChatScreenState extends State<ChatScreen> {
               child: FloatingActionButton(
                 mini: true,
                 backgroundColor: Colors.deepPurple,
-                child: const Icon(Icons.arrow_downward, color: Colors.white),
                 onPressed: _scrollToBottom,
+                child: const Icon(Icons.arrow_downward, color: Colors.white),
               ),
             ),
           ),
